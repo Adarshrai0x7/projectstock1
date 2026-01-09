@@ -1,0 +1,7 @@
+# Inside your loop in main.py
+results.append({
+    "name": str(display_name),
+    "price": f"{float(price):,.2f}", # Cast price to float
+    "change": f"{change_pct:.2f}%",
+    "isPositive": bool(change_val >= 0) # ✅ CRITICAL FIX: Cast to standard bool
+})

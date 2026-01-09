@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "26950318537",
+    "firebase_url": "https://finsight-7b199-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "finsight-7b199",
+    "storage_bucket": "finsight-7b199.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:26950318537:android:707df4721f2880cc669018",
+        "android_client_info": {
+          "package_name": "com.example.stockscreener"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "26950318537-024gotvr0uvmgc6hfpomhcfulu4osi0e.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA1kozAGZiRwsfejH3ey6Lb1jMnlo7phHM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "26950318537-024gotvr0uvmgc6hfpomhcfulu4osi0e.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
