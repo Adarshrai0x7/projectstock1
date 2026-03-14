@@ -1,0 +1,47 @@
+# Core LangChain & Utilities
+langchain
+langchain-core
+langchain-groq
+langchain-huggingface
+langchain-community
+python-dotenv
+pydantic
+pydantic-settings
+
+# Hugging Face Transformers (for embeddings)
+transformers
+huggingface-hub
+sentence-transformers
+
+# Vector DB for RAG
+faiss-cpu
+chromadb
+
+# Backend API
+fastapi
+uvicorn[standard]
+websockets
+
+# Frontend
+streamlit
+requests
+
+# Market Data & News
+yfinance
+feedparser
+aiohttp
+
+# Caching & Utilities
+cachetools
+numpy
+
+# Fuzzy matching (company name typo recovery in entity extractor)
+rapidfuzz>=3.0
+
+# Testing
+pytest
+pytest-asyncio
+httpx
+
+# Optional: Redis for production caching
+# redis

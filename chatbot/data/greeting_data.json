@@ -1,0 +1,47 @@
+[
+  {
+    "content": "Hello! 👋 Welcome to FinSight – your intelligent trading companion.\n\nI can help you with:\n• 📊 Real-time stock prices and market data\n• 📰 Latest financial news\n• 📚 Trading concepts and how-to guides\n• 💼 Portfolio insights\n\nJust ask me anything about the markets!",
+    "intent": "greeting",
+    "inputs": ["hello", "hi", "hey", "namaste", "hola"]
+  },
+  {
+    "content": "I'm your FinSight Assistant 🤖 – a powerful AI designed to help you with:\n\n📊 **Market Data**\n- Real-time stock prices (NSE/BSE)\n- Index tracking (Nifty, Sensex, Bank Nifty)\n- Stock information and fundamentals\n\n📰 **Financial News**\n- Latest market updates\n- Stock-specific news\n\n📚 **Trading Education**\n- Order types explained\n- Technical analysis basics\n- Trading strategies\n\n💬 **Smart Conversations**\n- I remember context!\n- Ask follow-up questions\n\nExample queries:\n- \"What's the price of TCS?\"\n- \"How is Nifty doing today?\"\n- \"Explain stop-loss orders\"\n- \"Show me market news\"",
+    "intent": "capabilities",
+    "inputs": ["what can you do", "help", "how can you help", "what are your features", "capabilities"]
+  },
+  {
+    "content": "FinSight is a modern AI-powered financial assistant for retail traders and investors.\n\nWe provide:\n• Smart market insights using AI\n• Real-time price tracking\n• Educational content on trading\n• Contextual conversations that remember what you asked\n\nWhether you're a beginner or experienced trader, FinSight helps you make informed decisions. 🚀",
+    "intent": "about_website",
+    "inputs": ["what is this website", "what is finsight", "about finsight", "tell me about finsight"]
+  },
+  {
+    "content": "I'm the FinSight Assistant – your AI-powered financial companion! 🤖\n\nI combine:\n• Real-time market data APIs\n• Advanced language understanding\n• Comprehensive trading knowledge\n\nTo give you instant, accurate information about stocks, markets, and trading concepts. Think of me as your personal market analyst who's always available! 😊",
+    "intent": "identity",
+    "inputs": ["who are you", "what are you", "introduce yourself"]
+  },
+  {
+    "content": "Good morning! ☀️ Ready to start your trading day?\n\nI can help you with:\n• Pre-market analysis\n• Stock price checks\n• Market news updates\n\nWhat would you like to know?",
+    "intent": "morning_greeting",
+    "inputs": ["good morning", "morning"]
+  },
+  {
+    "content": "Good afternoon! 🌤️ Markets are in session. How can I assist you today?",
+    "intent": "afternoon_greeting",
+    "inputs": ["good afternoon", "afternoon"]
+  },
+  {
+    "content": "Good evening! 🌙 Let's review your day or plan for tomorrow. What would you like to know?",
+    "intent": "evening_greeting",
+    "inputs": ["good evening", "evening"]
+  },
+  {
+    "content": "You're welcome! 😊 Happy to help. Feel free to ask anything else about the markets!",
+    "intent": "thanks_response",
+    "inputs": ["thanks", "thank you", "thanks a lot", "appreciate it"]
+  },
+  {
+    "content": "Goodbye! 👋 Happy trading! Remember:\n• Always use stop-losses\n• Never invest more than you can afford to lose\n• Stay informed with market news\n\nCome back anytime you need help! 🚀",
+    "intent": "goodbye",
+    "inputs": ["bye", "goodbye", "see you", "exit", "quit"]
+  }
+]
