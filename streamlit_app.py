@@ -6,14 +6,17 @@ Connects to the FastAPI backend at http://localhost:8000.
 
 import streamlit as st
 import requests
+import json
 import time
 from datetime import datetime
+
+import os
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 APP_TITLE = "FinSight"
 APP_SUBTITLE = "AI-Powered Financial Assistant"
 
@@ -259,32 +262,17 @@ def check_backend_health():
 
 def send_message(message: str, session_id: str = None) -> dict:
     """Send a message to the chatbot API and return the response."""
-    try:
-        payload = {"message": message}
-        if session_id:
-            payload["session_id"] = session_id
-
-        r = requests.post(
-            f"{API_BASE_URL}/chat",
-            json=payload,
-            timeout=30,
-        )
-        r.raise_for_status()
-        return r.json()
-    except requests.exceptions.ConnectionError:
-        return {
-            "reply": "⚠️ **Cannot connect to the backend.** Make sure the FastAPI server is running with `python main.py`.",
-            "intent": "ERROR",
-            "suggestions": [],
-            "session_id": session_id,
-        }
-    except Exception as e:
-        return {
-            "reply": f"⚠️ An error occurred: {str(e)[:200]}",
-            "intent": "ERROR",
-            "suggestions": [],
-            "session_id": session_id,
-        }
+    payload = {"message": message}
+    if session_id:
+        payload["session_id"] = session_id
+        
+    r = requests.post(
+        f"{API_BASE_URL}/chat",
+        json=payload,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
 
 def render_intent_badge(intent: str):
@@ -462,9 +450,13 @@ for i, msg in enumerate(st.session_state.messages):
         st.markdown(msg["content"])
 
         # Show intent badge and suggestions for assistant messages
-        if msg["role"] == "assistant" and msg.get("intent"):
-            badge_html = render_intent_badge(msg["intent"])
-            st.markdown(badge_html, unsafe_allow_html=True)
+        if msg["role"] == "assistant":
+            if msg.get("intent"):
+                badge_html = render_intent_badge(msg["intent"])
+                st.markdown(badge_html, unsafe_allow_html=True)
+                
+            if msg.get("elapsed"):
+                st.caption(f"⚡ {msg['elapsed']}s")
 
         # Render suggestion chips for the LAST assistant message only
         if (
@@ -491,8 +483,19 @@ if st.session_state.pending_suggestion:
     user_input = st.session_state.pending_suggestion
     st.session_state.pending_suggestion = None
 
-# Chat input box
-chat_input = st.chat_input("Ask about stocks, markets, trading...")
+# Quick-question chips ABOVE input
+st.markdown("**Try asking:**")
+chip_cols = st.columns(4)
+chips = [("📊","Nifty today"), ("💰","Reliance price"),
+         ("🔍","Undervalued stocks"), ("📚","Explain RSI")]
+for i, (icon, q) in enumerate(chips):
+    if chip_cols[i].button(f"{icon} {q}", key=f"chip_{i}", use_container_width=True):
+        st.session_state["prefill"] = q
+        st.rerun()
+
+prefill = st.session_state.pop("prefill", None)
+chat_input = st.chat_input("Ask about stocks, markets, trading...") or prefill
+
 if chat_input:
     user_input = chat_input
 
@@ -504,34 +507,85 @@ if user_input:
     with st.chat_message("user", avatar="👤"):
         st.markdown(user_input)
 
-    # Get bot response
+    # Get bot response — streaming
     with st.chat_message("assistant", avatar="📊"):
-        with st.spinner("Thinking..."):
-            response = send_message(user_input, st.session_state.session_id)
+        message_placeholder = st.empty()
+        status_placeholder = st.empty()
+        full_response = ""
+        metadata = {}
+        start_time = time.time()
 
-        reply = response.get("reply", "Sorry, something went wrong.")
-        intent = response.get("intent")
-        suggestions = response.get("suggestions") or []
-        session_id = response.get("session_id")
+        try:
+            with requests.post(
+                f"{API_BASE_URL}/stream",
+                json={"message": user_input,
+                      "session_id": st.session_state.session_id},
+                stream=True,
+                timeout=60,
+            ) as r:
+                if r.status_code == 429:
+                    st.warning("Rate limit reached. Please wait before asking again.")
+                    st.stop()
+                elif r.status_code != 200:
+                    st.error(f"Backend error {r.status_code}. Check server logs.")
+                    st.stop()
+
+                for line in r.iter_lines(decode_unicode=True):
+                    if not line or not line.startswith("data: "):
+                        continue
+                    try:
+                        data = json.loads(line[6:])
+                    except json.JSONDecodeError:
+                        continue
+
+                    if data["type"] == "token":
+                        full_response += data["content"]
+                        message_placeholder.markdown(full_response + "▌")
+                    elif data["type"] == "status":
+                        status_placeholder.caption(data["content"])
+                    elif data["type"] == "done":
+                        metadata = data
+
+        except requests.exceptions.ConnectionError:
+            st.error("Cannot connect to backend. Run: `uvicorn main:app --reload`")
+            st.stop()
+        except requests.exceptions.Timeout:
+            st.error("Request timed out. Try again.")
+            st.stop()
+        except requests.exceptions.ChunkedEncodingError:
+            # Server dropped connection (e.g. hot-reload) — show what we received so far
+            if not full_response:
+                st.error("Connection lost. Please try again.")
+                st.stop()
+
+        elapsed = round(time.time() - start_time, 1)
+
+        # Clear status indicator and streaming cursor
+        status_placeholder.empty()
+        message_placeholder.markdown(full_response)
+
+        intent = metadata.get("intent")
+        suggestions = metadata.get("suggestions", [])
+        session_id = metadata.get("session_id")
 
         # Update session ID
         if session_id:
             st.session_state.session_id = session_id
-
-        # Display reply
-        st.markdown(reply)
 
         # Intent badge
         if intent:
             badge_html = render_intent_badge(intent)
             st.markdown(badge_html, unsafe_allow_html=True)
 
+        st.caption(f"⚡ {elapsed}s")
+
         # Store the message
         st.session_state.messages.append({
             "role": "assistant",
-            "content": reply,
+            "content": full_response,
             "intent": intent,
             "suggestions": suggestions,
+            "elapsed": elapsed
         })
 
         # Render suggestion chips

@@ -140,6 +140,10 @@ class ScreenerService:
                 bollinger_lower=tech_data.get("bollinger", {}).get("lower"),
                 bollinger_position=tech_data.get("bollinger", {}).get("band_position"),
                 volume_ratio=tech_data.get("volume_analysis", {}).get("volume_ratio"),
+                supertrend_signal=tech_data.get("supertrend", {}).get("signal"),
+                adx=tech_data.get("adx", {}).get("value"),
+                vwap_position=tech_data.get("vwap", {}).get("signal"),
+                stochastic_k=tech_data.get("stochastic", {}).get("k"),
             )
             
             # Get current price
@@ -269,6 +273,10 @@ class ScreenerService:
             equity = info.get('totalStockholderEquity')
             roe = (net_income / equity * 100) if (net_income and equity and equity != 0) else None
             
+            eg = info.get('earningsGrowth')
+            rg = info.get('revenueGrowth')
+            inst = info.get('heldPercentInstitutions')
+            
             return FundamentalData(
                 pe_ratio=info.get('trailingPE'),
                 pb_ratio=info.get('priceToBook'),
@@ -277,7 +285,13 @@ class ScreenerService:
                 eps=info.get('trailingEps'),
                 dividend_yield=round(info.get('dividendYield', 0) * 100, 2) if info.get('dividendYield') else None,
                 market_cap=info.get('marketCap'),
-                revenue_growth=round(info.get('revenueGrowth', 0) * 100, 2) if info.get('revenueGrowth') else None,
+                revenue_growth=round(rg*100,1) if rg is not None else None,
+                earnings_growth=round(eg*100,1) if eg is not None else None,
+                current_ratio=info.get('currentRatio'),
+                quick_ratio=info.get('quickRatio'),
+                free_cash_flow=info.get('freeCashflow'),
+                institutional_holding=round(inst*100,1) if inst is not None else None,
+                peg_ratio=info.get('trailingPegRatio', info.get('pegRatio')),
                 profit_margin=round(info.get('profitMargins', 0) * 100, 2) if info.get('profitMargins') else None,
                 sector=info.get('sector'),
                 industry=info.get('industry'),

@@ -13,19 +13,6 @@ from enum import Enum
 # ENUMS
 # ============================================================================
 
-class Intent(str, Enum):
-    """Chatbot intent types."""
-    MARKET_PRICE = "MARKET_PRICE"
-    MARKET_TREND = "MARKET_TREND"
-    STOCK_INFO = "STOCK_INFO"
-    STOCK_HISTORY = "STOCK_HISTORY"
-    STOCK_SCREEN = "STOCK_SCREEN"
-    TRADING_HOW_TO = "TRADING_HOW_TO"
-    PORTFOLIO_QUERY = "PORTFOLIO_QUERY"
-    NEWS_REQUEST = "NEWS_REQUEST"
-    EDUCATION = "EDUCATION"
-    GREETING = "GREETING"
-    GENERAL = "GENERAL"
 
 
 class Market(str, Enum):
@@ -132,7 +119,7 @@ class StockHistory(BaseModel):
     symbol: str
     name: Optional[str] = None
     days: List[StockHistoryDay]
-    period: str = "5d"
+    period: Optional[str] = "5d"
     overall_change_percent: Optional[float] = None
     market: Market = Market.NSE
 
@@ -185,42 +172,6 @@ class PortfolioSummary(BaseModel):
     last_updated: datetime = Field(default_factory=datetime.now)
 
 
-# ============================================================================
-# CONTEXT & SESSION MODELS
-# ============================================================================
-
-class ExtractedEntities(BaseModel):
-    """Entities extracted from user query."""
-    stock_symbols: Optional[List[str]] = None
-    indices: Optional[List[str]] = None
-    time_period: Optional[str] = None
-    order_type: Optional[str] = None
-    amount: Optional[str] = None
-    action: Optional[str] = None
-
-
-class ConversationContext(BaseModel):
-    """Conversation context for multi-turn."""
-    session_id: str
-    messages: List[ChatMessage] = Field(default_factory=list)
-    last_intent: Optional[Intent] = None
-    last_entities: Optional[ExtractedEntities] = None
-    last_stock_mentioned: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.now)
-    last_activity: datetime = Field(default_factory=datetime.now)
-    
-    def add_message(self, role: str, content: str, metadata: Dict = None):
-        """Add a message to the conversation."""
-        self.messages.append(ChatMessage(
-            role=role, 
-            content=content,
-            metadata=metadata
-        ))
-        self.last_activity = datetime.now()
-    
-    def get_recent_messages(self, limit: int = 10) -> List[ChatMessage]:
-        """Get the most recent messages."""
-        return self.messages[-limit:]
 
 
 # ============================================================================
@@ -242,18 +193,29 @@ class TechnicalIndicators(BaseModel):
     bollinger_lower: Optional[float] = None
     bollinger_position: Optional[float] = None
     volume_ratio: Optional[float] = None
+    supertrend_signal: Optional[str] = None
+    adx: Optional[float] = None
+    vwap_position: Optional[str] = None
+    stochastic_k: Optional[float] = None
 
 
 class FundamentalData(BaseModel):
     """Fundamental analysis data."""
     pe_ratio: Optional[float] = None
     pb_ratio: Optional[float] = None
+    eps: Optional[float] = None
+    market_cap: Optional[float] = None
+    book_value: Optional[float] = None
+    dividend_yield: Optional[float] = None
     roe: Optional[float] = None
     debt_to_equity: Optional[float] = None
-    eps: Optional[float] = None
-    dividend_yield: Optional[float] = None
-    market_cap: Optional[float] = None
+    earnings_growth: Optional[float] = None
     revenue_growth: Optional[float] = None
+    current_ratio: Optional[float] = None
+    quick_ratio: Optional[float] = None
+    free_cash_flow: Optional[float] = None
+    institutional_holding: Optional[float] = None
+    peg_ratio: Optional[float] = None
     profit_margin: Optional[float] = None
     sector: Optional[str] = None
     industry: Optional[str] = None

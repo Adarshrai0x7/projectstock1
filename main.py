@@ -1,18 +1,27 @@
 """
-Enhanced FastAPI application for the Finance Chatbot.
+FastAPI application for the FinSight Chatbot.
+Powered by a LangGraph ReAct agent with tool-calling.
 Includes REST and WebSocket endpoints, health checks, and CORS support.
 """
 
+import json
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from common.config.settings import settings
-from chatbot.core.router import get_chat_router
+from chatbot.agent import get_agent, get_graph
 from common.models.schemas import ChatRequest, ChatResponse, HealthResponse
 
 
@@ -32,17 +41,26 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan manager for startup/shutdown."""
     # Startup
+    if settings.sentry_dsn:
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            integrations=[FastApiIntegration()],
+            traces_sample_rate=0.1,
+        )
+        logger.info("🛡️ Sentry error monitoring enabled")
     logger.info("🚀 Starting FinSight Chatbot API...")
     logger.info(f"📊 Default market: {settings.default_market}")
     logger.info(f"🤖 LLM Model: {settings.llm_model}")
     
-    # Initialize router (preload models)
-    get_chat_router()
-    logger.info("✅ ChatRouter initialized")
+    # Initialize LangGraph agent with async SQLite checkpointer
+    agent = get_agent()
+    await agent.initialize()
+    logger.info("✅ FinSight LangGraph agent initialized")
     
     yield
     
-    # Shutdown
+    # Shutdown — close the SQLite checkpointer connection
+    await agent.shutdown()
     logger.info("👋 Shutting down FinSight Chatbot API...")
 
 
@@ -52,10 +70,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="FinSight Chatbot API",
-    description="Advanced AI-powered financial assistant for trading platforms",
-    version="2.0.0",
+    description="AI-powered financial assistant using LangGraph agent architecture",
+    version="3.0.0",
     lifespan=lifespan
 )
+
+# Rate Limiting
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Configuration
 app.add_middleware(
@@ -68,7 +91,7 @@ app.add_middleware(
 
 
 # ============================================================================
-# REQUEST MODELS (for backward compatibility)
+# REQUEST MODELS
 # ============================================================================
 
 class MessageInput(BaseModel):
@@ -86,7 +109,7 @@ async def root():
     """Root endpoint with API info."""
     return HealthResponse(
         status="healthy",
-        version="2.0.0"
+        version="3.0.0"
     )
 
 
@@ -95,28 +118,25 @@ async def health_check():
     """Health check endpoint."""
     return HealthResponse(
         status="healthy",
-        version="2.0.0"
+        version="3.0.0"
     )
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(input: MessageInput):
+@limiter.limit("20/minute")
+async def chat_endpoint(request: Request, input: MessageInput):
     """
-    Main chat endpoint.
+    Main chat endpoint — powered by LangGraph ReAct agent.
     
-    Accepts a message and returns an AI-generated response with:
-    - reply: The chatbot's response
-    - intent: Detected intent type
-    - entities: Extracted entities (stocks, indices, etc.)
-    - suggestions: Follow-up suggestions
-    - session_id: Session ID for conversation continuity
+    The agent dynamically selects the right tool(s) to answer the query:
+    stock prices, news, analysis, education, screening, and more.
     """
     try:
         if not input.message or not input.message.strip():
             raise HTTPException(status_code=400, detail="Message cannot be empty")
         
-        router = get_chat_router()
-        response = await router.process_message(
+        agent = get_agent()
+        response = await agent.process_message(
             message=input.message.strip(),
             session_id=input.session_id
         )
@@ -129,15 +149,14 @@ async def chat_endpoint(input: MessageInput):
 
 
 @app.post("/v2/chat", response_model=ChatResponse)
-async def chat_v2_endpoint(request: ChatRequest):
-    """
-    V2 chat endpoint with full request model.
-    """
+@limiter.limit("20/minute")
+async def chat_v2_endpoint(request: Request, request_body: ChatRequest):
+    """V2 chat endpoint with full request model."""
     try:
-        router = get_chat_router()
-        response = await router.process_message(
-            message=request.message.strip(),
-            session_id=request.session_id
+        agent = get_agent()
+        response = await agent.process_message(
+            message=request_body.message.strip(),
+            session_id=request_body.session_id
         )
         return response
         
@@ -147,17 +166,70 @@ async def chat_v2_endpoint(request: ChatRequest):
 
 
 # ============================================================================
+# STREAMING ENDPOINT
+# ============================================================================
+
+@app.post("/stream")
+@limiter.limit("20/minute")
+async def stream_chat(request: Request, input: MessageInput):
+    """
+    Streaming chat endpoint — returns Server-Sent Events (SSE).
+
+    Events:
+      - {type: "token", content: "..."} — LLM output tokens
+      - {type: "status", content: "..."} — tool usage notifications
+      - {type: "done", intent: "...", suggestions: [...], session_id: "..."}
+    """
+    if not input.message or not input.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    agent = get_agent()
+    session_id = input.session_id or str(uuid.uuid4())
+
+    async def event_generator():
+        full_reply_parts = []
+        tools_used = []
+
+        async for chunk in agent.stream_message(
+            message=input.message.strip(),
+            session_id=session_id,
+        ):
+            full_reply_parts.append(chunk)
+            stripped = chunk.strip()
+
+            if stripped.startswith("\u2699\ufe0f Using ") and stripped.endswith("..."):
+                tool_name = stripped.replace("\u2699\ufe0f Using ", "").rstrip(".")
+                tools_used.append(tool_name)
+                yield f"data: {json.dumps({'type': 'status', 'content': stripped})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+        full_reply = "".join(full_reply_parts)
+        intent = agent._derive_intent(tools_used, input.message.strip())
+        try:
+            suggestions = await agent._get_suggestions(full_reply[:500])
+        except Exception:
+            suggestions = []
+
+        yield f"data: {json.dumps({'type': 'done', 'intent': intent, 'suggestions': suggestions, 'session_id': session_id})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ============================================================================
 # WEBSOCKET ENDPOINT
 # ============================================================================
 
 @app.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time chat.
-    """
+    """WebSocket endpoint for real-time chat via LangGraph agent."""
     await websocket.accept()
     session_id = None
-    router = get_chat_router()
+    agent = get_agent()
     
     try:
         while True:
@@ -169,8 +241,8 @@ async def websocket_chat(websocket: WebSocket):
                 await websocket.send_json({"error": "Empty message"})
                 continue
             
-            # Process message
-            response = await router.process_message(
+            # Process message via LangGraph agent
+            response = await agent.process_message(
                 message=message,
                 session_id=session_id
             )
@@ -200,9 +272,7 @@ async def websocket_chat(websocket: WebSocket):
 
 @app.get("/market/{symbol}")
 async def get_stock_price(symbol: str):
-    """
-    Get current price for a stock symbol.
-    """
+    """Get current price for a stock symbol."""
     from common.data_services.market_data import get_market_data_service
     from chatbot.modules.market_formatter import MarketFormatter
     
@@ -223,9 +293,7 @@ async def get_stock_price(symbol: str):
 
 @app.get("/index/{index_name}")
 async def get_index_data(index_name: str):
-    """
-    Get current data for a market index.
-    """
+    """Get current data for a market index."""
     from common.data_services.market_data import get_market_data_service
     
     service = get_market_data_service()
@@ -244,9 +312,7 @@ async def get_index_data(index_name: str):
 
 @app.get("/news")
 async def get_news(symbol: Optional[str] = None, limit: int = 5):
-    """
-    Get financial news (optionally filtered by stock symbol).
-    """
+    """Get financial news (optionally filtered by stock symbol)."""
     from common.data_services.news_service import get_news_service
     
     service = get_news_service()
@@ -284,9 +350,7 @@ async def list_screens():
 
 @app.get("/analyze/{symbol}")
 async def analyze_stock(symbol: str):
-    """
-    Get full technical + fundamental analysis for a stock.
-    """
+    """Get full technical + fundamental analysis for a stock."""
     from screener.screener import get_screener_service
     screener = get_screener_service()
     analysis = await screener.analyze_stock(symbol)
@@ -316,13 +380,7 @@ class CustomScreenInput(BaseModel):
 
 @app.post("/screener/custom")
 async def custom_screen(input: CustomScreenInput):
-    """
-    Run a custom stock screen with user-defined filters.
-    
-    Filter options: pe_ratio_max, pe_ratio_min, pb_ratio_max, roe_min,
-    debt_to_equity_max, dividend_yield_min, profit_margin_min,
-    rsi_max, rsi_min, above_sma_50, macd_bullish, score_min
-    """
+    """Run a custom stock screen with user-defined filters."""
     from screener.screener import get_screener_service
     screener = get_screener_service()
     result = await screener.screen_stocks(
@@ -339,9 +397,11 @@ async def custom_screen(input: CustomScreenInput):
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+    port = int(os.environ.get("PORT", settings.server_port))
     uvicorn.run(
         "main:app",
         host=settings.server_host,
-        port=settings.server_port,
-        reload=True
+        port=port,
+        reload=False
     )

@@ -53,6 +53,17 @@ class ScreenerFormatter:
             lines.append(f"  • MACD: {tech.macd:.2f} ({macd_dir})")
         if tech.bollinger_position is not None:
             lines.append(f"  • Bollinger Position: {tech.bollinger_position:.0%}")
+        if tech.supertrend_signal is not None:
+            st_icon = "🟢" if tech.supertrend_signal == "BUY" else "🔴"
+            lines.append(f"  • Supertrend: {st_icon} {tech.supertrend_signal}")
+        if tech.vwap_position is not None:
+            vwap_icon = "⬆️" if tech.vwap_position == "BUY" else "⬇️"
+            lines.append(f"  • VWAP Pos: {vwap_icon} {tech.vwap_position}")
+        if tech.stochastic_k is not None:
+            lines.append(f"  • Stoch(%K): {tech.stochastic_k:.1f}")
+        if tech.adx is not None:
+            trend = "Strong" if tech.adx > 25 else "Weak"
+            lines.append(f"  • ADX: {tech.adx:.1f} ({trend})")
         if tech.volume_ratio is not None:
             vol_tag = ""
             if tech.volume_ratio > 1.5: vol_tag = " (High)"
@@ -79,8 +90,20 @@ class ScreenerFormatter:
             lines.append(f"  • Profit Margin: {fund.profit_margin:.1f}%")
         if fund.revenue_growth is not None:
             lines.append(f"  • Revenue Growth: {fund.revenue_growth:+.1f}%")
+        if fund.earnings_growth is not None:
+            lines.append(f"  • Earnings Growth: {fund.earnings_growth:+.1f}%")
+        if fund.institutional_holding is not None:
+            lines.append(f"  • Inst. Holding: {fund.institutional_holding:.1f}%")
+        if fund.current_ratio is not None:
+            lines.append(f"  • Current Ratio: {fund.current_ratio:.2f}")
+        if fund.quick_ratio is not None:
+            lines.append(f"  • Quick Ratio: {fund.quick_ratio:.2f}")
+        if fund.peg_ratio is not None:
+            lines.append(f"  • PEG Ratio: {fund.peg_ratio:.2f}")
         if fund.market_cap is not None:
             lines.append(f"  • Market Cap: {ScreenerFormatter._format_market_cap(fund.market_cap, currency)}")
+        if fund.free_cash_flow is not None:
+            lines.append(f"  • Free Cash Flow: {currency}{fund.free_cash_flow/1e7:,.0f} Cr")
         if fund.sector:
             lines.append(f"  • Sector: {fund.sector}")
         lines.append("")

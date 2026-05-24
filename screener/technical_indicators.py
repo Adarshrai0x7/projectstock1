@@ -18,7 +18,14 @@ except ImportError:
     yf = None
     pd = None
     np = None
-    logger.warning("yfinance/pandas/numpy not available — technical indicators disabled")
+    logger.warning("yfinance/pandas/numpy not available")
+
+try:
+    import pandas_ta as ta
+    TA_AVAILABLE = True
+except ImportError:
+    TA_AVAILABLE = False
+    logger.warning("pandas-ta not available — extended technical indicators disabled")
 
 
 @dataclass
@@ -75,6 +82,10 @@ class TechnicalIndicators:
                 "volume_analysis": self.calculate_volume_analysis(df),
                 "current_price": float(df['Close'].iloc[-1]),
             }
+            
+            # Merge extended indicators if available
+            extended = self.get_extended_indicators(df)
+            indicators.update(extended)
             
             # Generate composite signal
             indicators["composite_signal"] = self._composite_signal(indicators)
@@ -471,7 +482,101 @@ class TechnicalIndicators:
             "current_price": None,
             "composite_signal": "NEUTRAL",
             "composite_score": 50.0,
+            "supertrend": {"value": None, "signal": "NEUTRAL", "description": "Data unavailable"},
+            "adx": {"value": None, "signal": "NEUTRAL", "description": "Data unavailable"},
+            "stochastic": {"k": None, "d": None, "signal": "NEUTRAL", "description": "Data unavailable"},
+            "vwap": {"value": None, "signal": "NEUTRAL", "description": "Data unavailable"},
         }
+    
+    # ========================================================================
+    # Extended Indicators (pandas-ta required)
+    # ========================================================================
+    
+    def get_extended_indicators(self, df) -> Dict[str, Any]:
+        """Calculate advanced indicators using pandas-ta."""
+        extended = {}
+        if not TA_AVAILABLE or len(df) < 50:
+            return extended
+            
+        try:
+            # 1. Supertrend (7, 3)
+            sti = df.ta.supertrend(length=7, multiplier=3)
+            if sti is not None and not sti.empty:
+                direction_col = [c for c in sti.columns if c.startswith('SUPERTd_')][0]
+                value_col = [c for c in sti.columns if c.startswith('SUPERT_')][0]
+                
+                direction = int(sti[direction_col].iloc[-1])
+                st_value = float(sti[value_col].iloc[-1])
+                
+                signal = "BUY" if direction > 0 else "SELL"
+                desc = f"Price above Supertrend ({st_value:.2f})" if direction > 0 else f"Price below Supertrend ({st_value:.2f})"
+                
+                extended["supertrend"] = {
+                    "value": round(st_value, 2),
+                    "signal": signal,
+                    "description": desc
+                }
+                
+            # 2. ADX (Average Directional Index) — trend strength
+            adx_df = df.ta.adx(length=14)
+            if adx_df is not None and not adx_df.empty:
+                adx_col = [c for c in adx_df.columns if c.startswith('ADX_')][0]
+                adx_val = float(adx_df[adx_col].iloc[-1])
+                
+                desc = "Strong Trend" if adx_val > 25 else "Weak/No Trend"
+                
+                extended["adx"] = {
+                    "value": round(adx_val, 2),
+                    "signal": "NEUTRAL", # ADX just shows strength, not direction
+                    "description": f"ADX is {adx_val:.1f} ({desc})"
+                }
+                
+            # 3. Stochastic Oscillator
+            stoch_df = df.ta.stoch()
+            if stoch_df is not None and not stoch_df.empty:
+                k_col = [c for c in stoch_df.columns if c.startswith('STOCHk_')][0]
+                d_col = [c for c in stoch_df.columns if c.startswith('STOCHd_')][0]
+                
+                k = float(stoch_df[k_col].iloc[-1])
+                d = float(stoch_df[d_col].iloc[-1])
+                
+                signal = "NEUTRAL"
+                desc = f"Stoch%K: {k:.1f}, %D: {d:.1f}"
+                
+                if k < 20 and d < 20:
+                    signal = "BUY"
+                    desc += " (Oversold)"
+                elif k > 80 and d > 80:
+                    signal = "SELL"
+                    desc += " (Overbought)"
+                    
+                extended["stochastic"] = {
+                    "k": round(k, 2),
+                    "d": round(d, 2),
+                    "signal": signal,
+                    "description": desc
+                }
+                
+            # 4. VWAP (Volume Weighted Average Price)
+            # VWAP requires an intraday timeframe typically, but pandas-ta can approximate
+            vwap_df = df.ta.vwap()
+            if vwap_df is not None and not vwap_df.empty:
+                vwap_val = float(vwap_df.iloc[-1])
+                current_price = float(df['Close'].iloc[-1])
+                
+                signal = "BUY" if current_price > vwap_val else "SELL"
+                pos = "above" if current_price > vwap_val else "below"
+                
+                extended["vwap"] = {
+                    "value": round(vwap_val, 2),
+                    "signal": signal,
+                    "description": f"Price {pos} VWAP ({vwap_val:.2f})"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error calculating extended indicators: {e}")
+            
+        return extended
 
 
 # Singleton

@@ -13,6 +13,14 @@ try:
     import yfinance as yf
 except ImportError:
     yf = None
+
+try:
+    from jugaad_trader.nse import NSELive
+    _nse_live = NSELive()
+    JUGAAD_AVAILABLE = True
+except ImportError:
+    _nse_live = None
+    JUGAAD_AVAILABLE = False
     
 from common.models.schemas import StockPrice, IndexData, StockDetails, MarketMovers, Market, StockHistory, StockHistoryDay
 from common.utils.cache import cache_with_ttl
@@ -85,7 +93,7 @@ class MarketDataService:
         self._cache_ttl = 30  # seconds
         
         if yf is None:
-            logger.warning("yfinance not installed. Market data will be simulated.")
+            logger.error("CRITICAL: yfinance not installed. Run: pip install yfinance")
     
     def _get_yf_symbol(self, symbol: str, market: str = None) -> str:
         """Convert symbol to yfinance format."""
@@ -180,8 +188,36 @@ class MarketDataService:
             return cached
         
         try:
+            # Try jugaad-trader first for NSE stocks (more real-time)
+            if JUGAAD_AVAILABLE and market != "US":
+                try:
+                    quote = _nse_live.get_quote(symbol.upper())
+                    if quote and "priceInfo" in quote:
+                        pi = quote["priceInfo"]
+                        current = pi.get("lastPrice", 0)
+                        prev = pi.get("previousClose", current)
+                        if current and current > 0:
+                            change = current - prev
+                            change_pct = (change / prev * 100) if prev else 0
+                            stock_price = StockPrice(
+                                symbol=symbol.upper(),
+                                name=STOCK_NAME_MAP.get(symbol.upper(), symbol),
+                                price=round(current, 2),
+                                change=round(change, 2),
+                                change_percent=round(change_pct, 2),
+                                volume=pi.get("totalTradedVolume"),
+                                high=pi.get("intraDayHighLow", {}).get("max"),
+                                low=pi.get("intraDayHighLow", {}).get("min"),
+                                prev_close=prev,
+                                market=Market.NSE
+                            )
+                            self._set_cache(cache_key, stock_price)
+                            return stock_price
+                except Exception as je:
+                    logger.debug(f"jugaad-trader failed for {symbol}, falling back to yfinance: {je}")
+
             if yf is None:
-                return self._simulate_stock_price(symbol)
+                return None
             
             # Smart detection: try NSE first, then US
             if market:
@@ -197,7 +233,7 @@ class MarketDataService:
             # Get current price data
             current_price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
             if not current_price or current_price == 0:
-                return self._simulate_stock_price(symbol)
+                return None
             
             prev_close = info.get('previousClose', info.get('regularMarketPreviousClose', current_price))
             
@@ -228,7 +264,7 @@ class MarketDataService:
             
         except Exception as e:
             logger.error(f"Error fetching price for {symbol}: {e}")
-            return self._simulate_stock_price(symbol)
+            return None
     
     async def get_index_data(self, index: str) -> Optional[IndexData]:
         """
@@ -252,13 +288,13 @@ class MarketDataService:
                 return None
             
             if yf is None:
-                return self._simulate_index_data(index)
+                return None
             
             ticker = yf.Ticker(yf_symbol)
             hist = ticker.history(period="2d")
             
             if hist.empty:
-                return self._simulate_index_data(index)
+                return None
             
             current = hist['Close'].iloc[-1]
             prev = hist['Close'].iloc[-2] if len(hist) > 1 else current
@@ -278,7 +314,7 @@ class MarketDataService:
             
         except Exception as e:
             logger.error(f"Error fetching index {index}: {e}")
-            return self._simulate_index_data(index)
+            return None
     
     async def get_stock_details(self, symbol: str) -> Optional[StockDetails]:
         """
@@ -299,7 +335,7 @@ class MarketDataService:
             yf_symbol = self._get_yf_symbol(symbol)
             
             if yf is None:
-                return self._simulate_stock_details(symbol)
+                return None
             
             ticker = yf.Ticker(yf_symbol)
             info = ticker.info
@@ -324,7 +360,7 @@ class MarketDataService:
             
         except Exception as e:
             logger.error(f"Error fetching details for {symbol}: {e}")
-            return self._simulate_stock_details(symbol)
+            return None
     
     async def get_market_summary(self) -> Dict[str, Any]:
         """Get overall market summary with key indices."""
@@ -362,7 +398,7 @@ class MarketDataService:
         
         try:
             if yf is None:
-                return self._simulate_stock_history(symbol, days)
+                return None
             
             # Smart detection
             if market:
@@ -377,7 +413,7 @@ class MarketDataService:
             hist = ticker.history(period=period)
             
             if hist.empty:
-                return self._simulate_stock_history(symbol, days)
+                return None
             
             # Take last N rows
             hist = hist.tail(days)

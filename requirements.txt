@@ -1,9 +1,12 @@
-# Core LangChain & Utilities
+# Core LangChain & LangGraph
 langchain
 langchain-core
 langchain-groq
 langchain-huggingface
 langchain-community
+langgraph
+langgraph-checkpoint-sqlite
+aiosqlite
 python-dotenv
 pydantic
 pydantic-settings
@@ -43,5 +46,14 @@ pytest
 pytest-asyncio
 httpx
 
-# Optional: Redis for production caching
-# redis
+# Rate Limiting & Monitoring
+slowapi
+sentry-sdk[fastapi]
+
+# LLM Fallback
+google-generativeai
+
+# Extended Data Sources
+pandas-ta
+jugaad-trader
+wikipedia-api

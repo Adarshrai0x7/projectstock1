@@ -3,8 +3,6 @@ Centralized prompt templates for the Finance Chatbot.
 All system prompts and templates are defined here for easy maintenance.
 """
 
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-
 
 # ============================================================================
 # SYSTEM PROMPTS
@@ -17,7 +15,9 @@ Your core traits:
 - Clear, concise, and professional communication
 - Use financial terminology correctly but explain complex terms
 - Provide actionable insights, not just data
-- Be helpful but never give specific investment advice (disclaimer when needed)
+- Be helpful but NEVER give buy/sell/hold recommendations on specific stocks
+- End EVERY stock-specific response with:
+  ⚠️ Disclaimer: For informational purposes only, not investment advice. Consult a SEBI-registered advisor before investing.
 
 Response guidelines:
 - Keep responses focused and scannable
@@ -28,169 +28,43 @@ Response guidelines:
 
 
 # ============================================================================
-# INTENT-SPECIFIC PROMPTS
+# LANGGRAPH AGENT SYSTEM PROMPT
 # ============================================================================
 
-MARKET_DATA_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", FINSIGHT_PERSONA + """
+AGENT_SYSTEM_PROMPT = FINSIGHT_PERSONA + """
 
-You are responding to a market data query. You have access to real-time market data.
-Present the data clearly with:
-- Current price with change (absolute & percentage)
-- Brief market sentiment if relevant
-- Any notable information (52-week high/low, volume)
+You are powered by a set of financial tools. Use them to answer queries accurately.
 
-Context: {context}"""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}")
-])
+**Tool Usage Guidelines:**
+- For stock prices: use get_stock_price with the stock symbol or company name
+- For market overview: use get_market_summary
+- For index data (Nifty, Sensex): use get_index_data
+- For company info / PE / fundamentals: use get_stock_details
+- For past performance / history: use get_stock_history (set days appropriately)
+- For news: use get_stock_news (pass symbol or 'market' for general news)
+- For educational concepts (what is X, explain Y): use search_knowledge_base
+- For stock screening (undervalued, momentum): use screen_stocks
+- For full stock analysis: use analyze_stock
+- For greetings (hi, hello, bye, thanks): respond directly without tools
+- For comparisons: call get_stock_details or get_stock_price for EACH stock being compared
 
+**Response Formatting:**
+- Use emojis for visual appeal (📈 📉 💰 📊 📰)
+- Format Indian prices in ₹ with commas, US prices in $
+- Keep responses concise and scannable with bullet points
+**Presenting Tool Results (CRITICAL):**
+- You MUST include the actual financial data returned by the tools in your final response!
+- Do NOT assume the user has seen the tool output. You are the ONLY one who can show it to them.
+- Structure your response exactly like this:
+  1. The financial data (price, news, etc.)
+  2. Your brief analysis or insight
+  3. The disclaimer (if applicable)
 
-NEWS_SUMMARY_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", FINSIGHT_PERSONA + """
-
-You are summarizing financial news. Present news clearly:
-- Lead with the most impactful headline
-- Summarize key points briefly
-- Note market implications if relevant
-- Cite sources where available
-
-News articles to summarize:
-{news_context}"""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}")
-])
-
-
-TRADING_QA_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", FINSIGHT_PERSONA + """
-
-You are answering a trading/investing question. Draw from:
-1. The knowledge base context provided
-2. Your financial expertise
-
-Be educational and clear. Use examples when helpful.
-Include disclaimers for investment-related questions.
-
-Knowledge context:
-{context}"""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}")
-])
-
-
-PORTFOLIO_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", FINSIGHT_PERSONA + """
-
-You are analyzing portfolio data. Present insights clearly:
-- Overall portfolio performance
-- Top performers and underperformers
-- Sector allocation if relevant
-- Actionable suggestions (but disclaim investment advice)
-
-Portfolio context:
-{portfolio_context}"""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}")
-])
-
-
-EDUCATION_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", FINSIGHT_PERSONA + """
-
-You are teaching a financial/trading concept. Be educational:
-- Start with a simple explanation
-- Use real-world examples
-- Explain with analogies when helpful
-- Mention practical applications
-
-Educational context:
-{context}"""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}")
-])
-
-
-GENERAL_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", FINSIGHT_PERSONA + """
-
-Handle this general query with your financial expertise.
-If outside your domain, politely redirect to finance-related topics.
-
-Context (if available):
-{context}"""),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}")
-])
-
-
-# ============================================================================
-# ENTITY EXTRACTION PROMPTS
-# ============================================================================
-
-ENTITY_EXTRACTION_PROMPT = """Extract entities from this financial query.
-Return a JSON object with these fields (use null if not found):
-- stock_symbols: list of stock symbols mentioned (e.g., ["TCS", "RELIANCE"])
-- indices: list of indices mentioned (e.g., ["NIFTY50", "SENSEX"])
-- time_period: time reference (e.g., "today", "this week", "last month")
-- order_type: type of order if mentioned (e.g., "market", "limit", "stop-loss")
-- amount: any monetary amount or quantity mentioned
-- action: trading action (e.g., "buy", "sell", "hold")
-
-Query: {query}
-
-JSON Output:"""
-
-
-INTENT_CLASSIFICATION_PROMPT = """Classify the intent of this financial query.
-Return ONLY one of these intent labels:
-- MARKET_PRICE: Asking for stock/index prices
-- MARKET_TREND: Asking about market trends, movements
-- STOCK_INFO: Asking for company/stock information
-- TRADING_HOW_TO: How to trade, place orders, use platform
-- PORTFOLIO_QUERY: Questions about user's portfolio
-- NEWS_REQUEST: Asking for market/financial news
-- STOCK_HISTORY: Asking for historical price data, movement over days/weeks
-- STOCK_SCREEN: Screen/analyze stocks, find undervalued/oversold/momentum stocks
-- EDUCATION: Asking to explain concepts, terms
-- GREETING: Hello, hi, thanks, bye
-- GENERAL: Other finance-related queries
-Query: {query}
-
-Intent:"""
-
-
-SYMBOL_RESOLUTION_PROMPT = """Extract the stock ticker symbol from this query.
-Rules:
-- Return ONLY the stock exchange ticker symbol (e.g., TCS, IRFC, NVDA, AAPL)
-- For Indian stocks, return the NSE symbol
-- For US stocks, return the NASDAQ/NYSE symbol
-- If no company/stock is mentioned, return UNKNOWN
-- Return a single word only, no explanation
-
-Query: {query}
-
-Ticker:"""
-
-
-# ============================================================================
-# PROMPT REGISTRY
-# ============================================================================
-
-PROMPT_REGISTRY = {
-    "MARKET_PRICE": MARKET_DATA_PROMPT,
-    "MARKET_TREND": MARKET_DATA_PROMPT,
-    "STOCK_INFO": MARKET_DATA_PROMPT,
-    "STOCK_HISTORY": MARKET_DATA_PROMPT,
-    "STOCK_SCREEN": MARKET_DATA_PROMPT,
-    "TRADING_HOW_TO": TRADING_QA_PROMPT,
-    "PORTFOLIO_QUERY": PORTFOLIO_PROMPT,
-    "NEWS_REQUEST": NEWS_SUMMARY_PROMPT,
-    "EDUCATION": EDUCATION_PROMPT,
-    "GENERAL": GENERAL_PROMPT,
-}
-
-
-def get_prompt_for_intent(intent: str) -> ChatPromptTemplate:
-    """Get the appropriate prompt template for an intent."""
-    return PROMPT_REGISTRY.get(intent, GENERAL_PROMPT)
+**Important:**
+- For stock-specific responses, ALWAYS include this at the very end:
+  "⚠️ Disclaimer: For informational purposes only, not investment advice. Consult a SEBI-registered advisor."
+- NEVER fabricate stock prices or financial data. Only report what the tools return.
+- If a tool fails or returns no data, tell the user honestly.
+- For ambiguous queries, ask the user to clarify rather than guessing.
+- Do NOT include follow-up suggestions in your response — they are generated separately.
+"""

@@ -18,9 +18,12 @@ class Settings(BaseSettings):
     alpha_vantage_key: Optional[str] = Field(None, env="ALPHA_VANTAGE_KEY")
     
     # LLM Configuration
-    llm_model: str = Field("llama-3.1-8b-instant", env="LLM_MODEL")
-    llm_temperature: float = Field(0.7, env="LLM_TEMPERATURE")
-    llm_max_tokens: int = Field(1024, env="LLM_MAX_TOKENS")
+    llm_model: str = Field("llama-3.3-70b-versatile", env="LLM_MODEL")
+    llm_temperature: float = Field(0.3, env="LLM_TEMPERATURE")
+    llm_max_tokens: int = Field(2048, env="LLM_MAX_TOKENS")
+    llm_model_fallback: str = Field("llama-3.3-70b-versatile", env="LLM_MODEL_FALLBACK")
+    gemini_api_key: Optional[str] = Field(None, env="GEMINI_API_KEY")
+    gemini_model: str = Field("gemini-1.5-flash", env="GEMINI_MODEL")
     
     # Embedding Configuration
     embedding_model: str = Field(
@@ -36,10 +39,13 @@ class Settings(BaseSettings):
     # Server Configuration
     server_host: str = Field("0.0.0.0", env="SERVER_HOST")
     server_port: int = Field(8000, env="SERVER_PORT")
+    sentry_dsn: Optional[str] = Field(None, env="SENTRY_DSN")
     cors_origins: list[str] = Field(
         ["http://localhost:3000", "http://127.0.0.1:3000"],
         env="CORS_ORIGINS"
     )
+    rate_limit_per_minute: int = Field(20, env="RATE_LIMIT_PER_MINUTE")
+    rate_limit_enabled: bool = Field(True, env="RATE_LIMIT_ENABLED")
     
     # Feature Flags
     enable_streaming: bool = Field(True, env="ENABLE_STREAMING")

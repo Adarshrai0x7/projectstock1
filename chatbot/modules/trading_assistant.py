@@ -284,6 +284,77 @@ TRADING_KNOWLEDGE = {
 • Must buy back before market close""",
         "keywords": ["how to sell", "sell stock", "exit", "selling", "book profit"]
     },
+    
+    "t_plus_one": {
+        "title": "T+1 Settlement",
+        "content": """**T+1 Settlement** means trades are settled the next business day after the trade date.
+
+India moved to T+1 settlement for all NSE/BSE stocks in 2023, making it one of the fastest settlement systems globally.
+
+**What this means for traders:**
+- Buy today, shares credited to demat account next trading day
+- Sell today, money credited to bank account next trading day
+- No more waiting 2 days like the old T+2 system
+- Reduces counterparty risk significantly
+
+**Intraday exception:** Intraday trades are squared off same day — no delivery involved.""",
+        "keywords": ["t+1", "settlement", "t plus one", "trade settlement", "demat credit"]
+    },
+
+    "circuit_breaker": {
+        "title": "Circuit Breakers and Price Bands",
+        "content": """**Circuit Breakers** halt trading when markets move sharply to prevent panic.
+
+**Market-wide circuit breakers (NSE/BSE):**
+- 10% move → 45 minute halt (before 1 PM) / 15 minutes (between 1-2:30 PM) / no halt after 2:30 PM
+- 15% move → 1 hour 45 minute halt / 45 minutes / no halt after 2:30 PM
+- 20% move → Trading halted for rest of the day
+
+**Stock-specific price bands:**
+- 2%, 5%, 10%, or 20% upper/lower circuit limits
+- Stock hitting upper circuit = only buyers, no sellers (very bullish signal)
+- Stock hitting lower circuit = only sellers, no buyers (very bearish signal)
+- F&O stocks: no price band (but index circuit breakers apply)""",
+        "keywords": ["circuit breaker", "upper circuit", "lower circuit", "price band", "halt trading"]
+    },
+
+    "sebi_investor": {
+        "title": "SEBI Investor Protection Rules",
+        "content": """**SEBI (Securities and Exchange Board of India)** regulates Indian stock markets.
+
+**Key investor protections:**
+- Mandatory demat account for all share holdings
+- Broker margins must be in segregated accounts
+- SEBI SCORES: Online complaint portal for investor grievances
+- Investor Protection Fund: Covers up to ₹25 lakh if broker defaults
+- KYC mandatory for all trading accounts
+
+**SEBI registration check:**
+Always verify your broker/advisor is SEBI registered at sebi.gov.in/sebiweb/home/HomeAction.do
+
+**Disclaimer:** FinSight is an informational tool. Always verify with SEBI-registered advisors.""",
+        "keywords": ["SEBI", "investor protection", "broker default", "SCORES", "KYC", "regulation"]
+    },
+
+    "fii_dii": {
+        "title": "FII and DII Activity",
+        "content": """**FII (Foreign Institutional Investors)** and **DII (Domestic Institutional Investors)** are major market movers.
+
+**FII:**
+- Foreign funds investing in Indian markets
+- When FIIs buy heavily = bullish signal, market tends to rise
+- When FIIs sell (net sellers) = bearish signal, market tends to fall
+- Tracked daily on NSE website
+
+**DII:**
+- Indian mutual funds, insurance companies, pension funds
+- Often counter FII selling (buy when FIIs sell)
+- DII buying during FII selloff = market support signal
+
+**Where to check:**
+NSE India publishes daily FII/DII data. Important for understanding whether institutional money is flowing in or out of Indian markets.""",
+        "keywords": ["FII", "DII", "foreign investors", "institutional buying", "institutional selling", "net buy", "net sell"]
+    },
 }
 
 

@@ -25,9 +25,11 @@ wheels/
 venv/
 .venv/
 ENV/
+venu/
 
 # Sensitive files
 .env
+.streamlit/secrets.toml
 *.bak
 *.swp
 *.log
@@ -36,3 +38,26 @@ ENV/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Database
+*.db
+
+# Test / scratch files
+test.ipynb
+test_*.py
+test_*.json
+test_output.txt
+test_results.json
+run_test_bank.py
+generate_notebook.py
+
+# Dev notes / plans (not part of project source)
+implementation_plan.md
+walkthrough.md
+question.md
+chatbot_improvements.md
+FINSIGHT_IMPROVEMENTS_ANTIGRAVITY.md
+LEARNING_CHECKLIST.md
+
+# Large notebook consolidation
+FinSight_Complete_Project.ipynb
