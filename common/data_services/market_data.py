@@ -15,7 +15,7 @@ except ImportError:
     yf = None
 
 try:
-    from jugaad_trader.nse import NSELive
+    from jugaad_data.nse import NSELive
     _nse_live = NSELive()
     JUGAAD_AVAILABLE = True
 except ImportError:
@@ -24,55 +24,18 @@ except ImportError:
     
 from common.models.schemas import StockPrice, IndexData, StockDetails, MarketMovers, Market, StockHistory, StockHistoryDay
 from common.utils.cache import cache_with_ttl
+from chatbot.core.symbol_registry import (
+    INDEX_YF_SYMBOLS, INDICES, STOCK_NAME_MAP, NSE_SUFFIX, BSE_SUFFIX,
+    get_index_yf_symbol,
+)
 
 logger = logging.getLogger(__name__)
 
-
-# ============================================================================
-# SYMBOL MAPPINGS
-# ============================================================================
-
-# NSE stock symbols need .NS suffix for yfinance
-NSE_SUFFIX = ".NS"
-BSE_SUFFIX = ".BO"
-
-# Index mappings
-INDEX_SYMBOLS = {
-    "NIFTY 50": "^NSEI",
-    "NIFTY50": "^NSEI",
-    "NIFTY": "^NSEI",
-    "SENSEX": "^BSESN",
-    "BSE SENSEX": "^BSESN",
-    "BANK NIFTY": "^NSEBANK",
-    "BANKNIFTY": "^NSEBANK",
-    "NIFTY IT": "^CNXIT",
-    "NIFTYIT": "^CNXIT",
-    "NIFTY BANK": "^NSEBANK",
-}
-
-# Popular stock name mappings
-STOCK_NAME_MAP = {
-    "RELIANCE": "Reliance Industries Ltd",
-    "TCS": "Tata Consultancy Services",
-    "HDFCBANK": "HDFC Bank Ltd",
-    "INFY": "Infosys Ltd",
-    "ICICIBANK": "ICICI Bank Ltd",
-    "HINDUNILVR": "Hindustan Unilever Ltd",
-    "ITC": "ITC Ltd",
-    "SBIN": "State Bank of India",
-    "BHARTIARTL": "Bharti Airtel Ltd",
-    "KOTAKBANK": "Kotak Mahindra Bank Ltd",
-    "LIC": "Life Insurance Corporation",
-    "BAJFINANCE": "Bajaj Finance Ltd",
-    "TATAMOTORS": "Tata Motors Ltd",
-    "MARUTI": "Maruti Suzuki India Ltd",
-    "ASIANPAINT": "Asian Paints Ltd",
-    "WIPRO": "Wipro Ltd",
-    "TITAN": "Titan Company Ltd",
-    "ADANIENT": "Adani Enterprises Ltd",
-    "AXISBANK": "Axis Bank Ltd",
-    "SUNPHARMA": "Sun Pharmaceutical Industries Ltd",
-}
+INDEX_SYMBOLS: dict[str, str] = {}
+for _variant, _canonical in INDICES.items():
+    _yf = INDEX_YF_SYMBOLS.get(_canonical)
+    if _yf:
+        INDEX_SYMBOLS[_variant] = _yf
 
 
 class MarketDataService:
@@ -124,12 +87,12 @@ class MarketDataService:
         
         symbol_upper = symbol.upper()
         
-        # Check if it's an index
+        
         if symbol_upper in INDEX_SYMBOLS:
             return INDEX_SYMBOLS[symbol_upper], "INDEX"
         
-        # Try NSE first
-        nse_symbol = f"{symbol_upper}{NSE_SUFFIX}"
+       
+        nse_symbol = symbol_upper if symbol_upper.endswith(NSE_SUFFIX) else f"{symbol_upper}{NSE_SUFFIX}"
         try:
             ticker = yf.Ticker(nse_symbol)
             info = ticker.info
@@ -188,7 +151,7 @@ class MarketDataService:
             return cached
         
         try:
-            # Try jugaad-trader first for NSE stocks (more real-time)
+           
             if JUGAAD_AVAILABLE and market != "US":
                 try:
                     quote = _nse_live.get_quote(symbol.upper())
@@ -219,18 +182,17 @@ class MarketDataService:
             if yf is None:
                 return None
             
-            # Smart detection: try NSE first, then US
             if market:
                 yf_symbol = self._get_yf_symbol(symbol, market)
                 detected_market = market
             else:
                 yf_symbol, detected_market = self._detect_market(symbol)
             
-            # Fetch data
+           
             ticker = yf.Ticker(yf_symbol)
             info = ticker.info
             
-            # Get current price data
+          
             current_price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
             if not current_price or current_price == 0:
                 return None
@@ -240,7 +202,7 @@ class MarketDataService:
             change = current_price - prev_close
             change_percent = (change / prev_close * 100) if prev_close else 0
             
-            # Determine currency symbol for formatting
+           
             currency = "$" if detected_market == "US" else "\u20b9"
             
             stock_price = StockPrice(
@@ -354,7 +316,7 @@ class MarketDataService:
                 description=info.get('longBusinessSummary')
             )
             
-            # Cache for longer (5 minutes) as this data changes less frequently
+           
             self._set_cache(cache_key, details, ttl=300)
             return details
             
@@ -400,7 +362,7 @@ class MarketDataService:
             if yf is None:
                 return None
             
-            # Smart detection
+          
             if market:
                 yf_symbol = self._get_yf_symbol(symbol, market)
                 detected_market = market
@@ -408,14 +370,14 @@ class MarketDataService:
                 yf_symbol, detected_market = self._detect_market(symbol)
             
             ticker = yf.Ticker(yf_symbol)
-            # Fetch extra days to ensure we get enough trading days
+           
             period = f"{days + 5}d"
             hist = ticker.history(period=period)
             
             if hist.empty:
                 return None
             
-            # Take last N rows
+            
             hist = hist.tail(days)
             
             history_days = []
@@ -436,7 +398,7 @@ class MarketDataService:
                 ))
                 prev_close = row['Close']
             
-            # Calculate overall change
+          
             overall_change = None
             if len(history_days) >= 2:
                 first_close = hist['Close'].iloc[0]
@@ -456,16 +418,13 @@ class MarketDataService:
                 market=Market.US if detected_market == "US" else Market.NSE
             )
             
-            self._set_cache(cache_key, history, ttl=60)  # Cache for 1 minute
+            self._set_cache(cache_key, history, ttl=60)  
             return history
             
         except Exception as e:
             logger.error(f"Error fetching history for {symbol}: {e}")
             return self._simulate_stock_history(symbol, days)
-    
-    # ========================================================================
-    # SIMULATION METHODS (fallback when yfinance unavailable)
-    # ========================================================================
+   
     
     def _simulate_stock_price(self, symbol: str) -> StockPrice:
         """Generate simulated stock price for demo purposes."""
@@ -559,7 +518,6 @@ class MarketDataService:
         )
 
 
-# Singleton instance
 _market_service = None
 
 def get_market_data_service() -> MarketDataService:

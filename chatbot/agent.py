@@ -1,9 +1,6 @@
 """
 LangGraph Agent for the FinSight chatbot.
 
-Replaces the hardcoded intent classifier + if/elif router with a single
-LLM-driven agent that dynamically picks the right tool(s) for each query.
-
 Architecture:
     User Message → StateGraph agent node → LLM picks tool(s) → ToolNode
     executes → LLM synthesises final answer → ChatResponse
@@ -40,32 +37,22 @@ import operator
 import uuid
 from typing import Optional, List, Annotated, TypedDict
 from datetime import datetime, timezone
-
 from langchain_groq import ChatGroq
 from langchain_core.tools import tool, ToolException, InjectedToolCallId
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-# NOTE: Requires separate package `langgraph-checkpoint-sqlite` (pip install langgraph-checkpoint-sqlite)
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-# NOTE: In langgraph >=0.2.x Send lives in langgraph.constants; some older
-# versions exported it from langgraph.types — adjust if your version differs.
 from langgraph.constants import Send
 from pydantic import BaseModel, Field
 
 from common.config.settings import settings
 from common.config.prompts import AGENT_SYSTEM_PROMPT
 from common.models.schemas import ChatResponse
-from chatbot.core.symbol_utils import resolve_symbol, resolve_index, COMPANY_NAME_MAP
+from chatbot.core.symbol_utils import resolve_symbol, resolve_index
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# STATE DEFINITIONS
-# ============================================================================
-
 class AgentState(TypedDict):
     """Typed state for the main agent graph."""
     messages: Annotated[list, add_messages]
@@ -88,26 +75,74 @@ class AgentSuggestions(BaseModel):
     suggestions: list[str] = Field(default_factory=list, max_length=4)
 
 
-# ============================================================================
-# TOOL DEFINITIONS
-# Each tool wraps an existing data service and returns a formatted string.
-# The LLM reads the string and synthesises a user-facing response.
-# ============================================================================
+# ── Pydantic input schemas for LLM tool calling ────────────────────────
+# These force the LLM to cleanly extract the company name / query
+# from the user's message before calling the tool.
 
-@tool(response_format="content_and_artifact")
+class StockQueryInput(BaseModel):
+    """Input schema for tools that operate on a single stock."""
+    company_name: str = Field(
+        description=(
+            "The name of the company or stock the user is asking about. "
+            "Extract the plain name exactly as the user said it, "
+            "e.g. 'Tata Motors', 'ICICI Bank', 'Zomato', 'RELIANCE'."
+        )
+    )
+
+
+class StockHistoryInput(BaseModel):
+    """Input schema for historical stock data requests."""
+    company_name: str = Field(
+        description=(
+            "The name of the company or stock. "
+            "Extract the plain name, e.g. 'Infosys', 'HDFC Bank'."
+        )
+    )
+    days: int = Field(
+        description=(
+            "Number of trading days of history to fetch. "
+            "Use 5 for recent, 7 for 'last week', 30 for 'last month', "
+            "90 for 'last quarter'."
+        )
+    )
+
+
+class NewsQueryInput(BaseModel):
+    """Input schema for news queries."""
+    query: str = Field(
+        description=(
+            "The company name or topic for news. "
+            "Pass the plain company name like 'TCS' or 'Reliance' "
+            "for stock-specific news. Pass 'market' for general news."
+        )
+    )
+
+
+class ScreenerInput(BaseModel):
+    """Input schema for stock screener."""
+    screen_name: str = Field(
+        description=(
+            "The type of stock screen to run. "
+            "One of: 'undervalued', 'momentum', 'oversold', "
+            "'high_dividend', 'strong_fundamentals'."
+        )
+    )
+
+
+@tool(args_schema=StockQueryInput, response_format="content_and_artifact")
 async def get_stock_price(
-    symbol: str,
+    company_name: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> tuple[str, dict]:
     """
     Get the current real-time price of a stock.
     Use this when the user asks for a stock's price, rate, CMP, LTP, or value.
-    Accepts stock symbols (TCS, RELIANCE) or company names (Tata Motors, Infosys).
+    Accepts company names (Tata Motors, Infosys) or stock symbols (TCS, RELIANCE).
     """
     from common.data_services.market_data import get_market_data_service
     from chatbot.modules.market_formatter import MarketFormatter
 
-    resolved = resolve_symbol(symbol) or symbol.upper()
+    resolved = resolve_symbol(company_name) or company_name.upper()
     service = get_market_data_service()
     price = await service.get_stock_price(resolved)
 
@@ -119,7 +154,7 @@ async def get_stock_price(
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         return content, artifact
-    raise ToolException(f"Could not find price data for '{symbol}'. Please check the stock symbol.")
+    raise ToolException(f"Could not find price data for '{company_name}'. Please check the stock name.")
 
 
 @tool(response_format="content_and_artifact")
@@ -174,9 +209,9 @@ async def get_market_summary(
     raise ToolException("Unable to fetch market data at the moment.")
 
 
-@tool(response_format="content_and_artifact")
+@tool(args_schema=StockQueryInput, response_format="content_and_artifact")
 async def get_stock_details(
-    symbol: str,
+    company_name: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> tuple[str, dict]:
     """
@@ -189,7 +224,7 @@ async def get_stock_details(
     from chatbot.modules.market_formatter import MarketFormatter
     from chatbot.rag_chain import get_wikipedia_summary
 
-    resolved = resolve_symbol(symbol) or symbol.upper()
+    resolved = resolve_symbol(company_name) or company_name.upper()
     service = get_market_data_service()
     screener = get_screener_in_service()
 
@@ -222,24 +257,23 @@ async def get_stock_details(
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         return content, artifact
-    raise ToolException(f"Could not find details for '{symbol}'.")
+    raise ToolException(f"Could not find details for '{company_name}'.")
 
 
-@tool
+@tool(args_schema=StockHistoryInput)
 async def get_stock_history(
-    symbol: str,
+    company_name: str,
     days: int,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> str:
     """
     Get historical stock price data (OHLCV) for the last N trading days.
     Use this when the user asks about past performance, price movement, trends over days/weeks.
-    Use 5 for recent, 7 for 'last week', 30 for 'last month', 90 for 'last quarter'.
     """
     from common.data_services.market_data import get_market_data_service
     from chatbot.modules.market_formatter import MarketFormatter
 
-    resolved = resolve_symbol(symbol) or symbol.upper()
+    resolved = resolve_symbol(company_name) or company_name.upper()
     days = min(max(days, 1), 90)
 
     service = get_market_data_service()
@@ -247,17 +281,17 @@ async def get_stock_history(
 
     if history:
         return MarketFormatter.format_stock_history(history)
-    raise ToolException(f"Could not fetch history for '{symbol}'.")
+    raise ToolException(f"Could not fetch history for '{company_name}'.")
 
 
-@tool
+@tool(args_schema=NewsQueryInput)
 async def get_stock_news(
     query: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> str:
     """
     Get the latest financial news articles.
-    Pass a stock symbol like 'TCS' or 'RELIANCE' for stock-specific news.
+    Pass a company name like 'TCS' or 'Reliance' for stock-specific news.
     Pass 'market' for general market news and headlines.
     """
     from common.data_services.news_service import get_news_service
@@ -284,10 +318,11 @@ def search_knowledge_base(
     about trading concepts like stop-loss, PE ratio, intraday, candlestick patterns, etc.
     """
     from chatbot.modules.trading_assistant import get_trading_assistant
-    from chatbot.rag_chain import get_rag_retriever
+    from chatbot.rag_chain import get_rag_retriever, get_tavily_search
     from common.data_services.wikipedia_service import get_wikipedia_service
 
     parts = []
+
 
     assistant = get_trading_assistant()
     topic = assistant.search(query)
@@ -300,10 +335,16 @@ def search_knowledge_base(
             docs = retriever.invoke(query)
             if docs:
                 rag_text = "\n".join(d.page_content for d in docs[:2])
-                parts.append(f"📚 **Knowledge Base:**\n{rag_text}")
+                parts.append(f"📚 **Local Knowledge:**\n{rag_text}")
         except Exception:
             pass
+            
+   
+    tavily_context = get_tavily_search(query)
+    if tavily_context:
+        parts.append(f"🌐 **Web Context:**\n{tavily_context}")
 
+   
     wiki_service = get_wikipedia_service()
     search_query = query.lower()
     for prefix in ("what is", "tell me about", "explain", "define"):
@@ -319,14 +360,13 @@ def search_knowledge_base(
     return f"No specific knowledge found for '{query}'. Please answer from your financial expertise."
 
 
-@tool
+@tool(args_schema=ScreenerInput)
 async def screen_stocks(
     screen_name: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> str:
     """
     Run a predefined stock screener to find stocks matching criteria.
-    Available screens: 'undervalued', 'momentum', 'oversold', 'high_dividend', 'strong_fundamentals'.
     Use this when the user asks for 'undervalued stocks', 'momentum stocks', 'best stocks', etc.
     """
     from screener.screener import get_screener_service
@@ -355,11 +395,6 @@ async def screen_stocks(
     return "\n".join(lines)
 
 
-# ============================================================================
-# ANALYSIS SUB-GRAPH  (Upgrade 8)
-# Fan-out: START → fetch_price, fetch_fundamentals, fetch_technicals (parallel)
-# Fan-in:  all 3 → synthesise → END
-# ============================================================================
 
 async def _fetch_price_node(state: AnalysisSubState) -> dict:
     """Fetch current stock price."""
@@ -495,9 +530,9 @@ def _get_analysis_subgraph():
     return _analysis_subgraph
 
 
-@tool
+@tool(args_schema=StockQueryInput)
 async def analyze_stock(
-    symbol: str,
+    company_name: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> str:
     """
@@ -505,7 +540,7 @@ async def analyze_stock(
     Returns composite score, signal (BUY/SELL/HOLD), RSI, MACD, PE ratio, etc.
     Use this when the user asks to 'analyze X', 'full analysis of X', 'should I look at X'.
     """
-    resolved = resolve_symbol(symbol) or symbol.upper()
+    resolved = resolve_symbol(company_name) or company_name.upper()
     subgraph = _get_analysis_subgraph()
     result = await subgraph.ainvoke({
         "symbol": resolved,
@@ -517,12 +552,10 @@ async def analyze_stock(
 
     if result.get("final_output"):
         return result["final_output"]
-    raise ToolException(f"Could not analyze '{symbol}'. Please try another stock.")
+    raise ToolException(f"Could not analyze '{company_name}'. Please try another stock.")
 
 
-# ============================================================================
-# TOOL → INTENT MAPPING  (unchanged)
-# ============================================================================
+
 
 TOOL_INTENT_MAP = {
     "get_stock_price": "MARKET_PRICE",
@@ -537,9 +570,7 @@ TOOL_INTENT_MAP = {
 }
 
 
-# ============================================================================
-# ALL TOOLS LIST
-# ============================================================================
+
 
 ALL_TOOLS = [
     get_stock_price,
@@ -554,9 +585,7 @@ ALL_TOOLS = [
 ]
 
 
-# ============================================================================
-# MAIN GRAPH CONSTRUCTION
-# ============================================================================
+
 
 def _build_main_graph(llm: ChatGroq, checkpointer):
     """Build and compile the main agent StateGraph."""
@@ -628,9 +657,7 @@ def _build_main_graph(llm: ChatGroq, checkpointer):
     return builder.compile(checkpointer=checkpointer)
 
 
-# ============================================================================
-# FinSightAgent CLASS
-# ============================================================================
+
 
 class FinSightAgent:
     """
@@ -766,7 +793,7 @@ class FinSightAgent:
 
     # --- helpers (unchanged) ---------------------------------------------
 
-    def _derive_intent(self, tools_used: List[str], message: str) -> str:
+    def derive_intent(self, tools_used: List[str], message: str) -> str:
         """Map tool usage back to an intent string for the UI badge."""
         if not tools_used:
             msg_lower = message.lower().strip()
@@ -780,9 +807,12 @@ class FinSightAgent:
         primary_tool = tools_used[0]
         return TOOL_INTENT_MAP.get(primary_tool, "GENERAL")
 
+    # Keep backward-compatible alias
+    _derive_intent = derive_intent
+
     # --- structured suggestions (Upgrade 9) ------------------------------
 
-    async def _get_suggestions(self, reply: str) -> List[str]:
+    async def get_suggestions(self, reply: str) -> List[str]:
         """Extract follow-up suggestions via structured LLM output."""
         try:
             structured_llm = self.llm.with_structured_output(AgentSuggestions)
@@ -797,10 +827,11 @@ class FinSightAgent:
             logger.debug("Structured suggestions extraction failed", exc_info=True)
             return []
 
+    # Keep backward-compatible alias
+    _get_suggestions = get_suggestions
 
-# ============================================================================
-# SINGLETONS
-# ============================================================================
+
+
 
 _agent: Optional[FinSightAgent] = None
 

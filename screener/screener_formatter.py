@@ -3,7 +3,6 @@ Screener Formatter.
 Formats stock analysis and screener results into readable chat responses.
 """
 
-from typing import Optional
 from common.models.schemas import StockAnalysis, ScreenerResult, Market
 
 
@@ -25,7 +24,7 @@ class ScreenerFormatter:
         lines.append(f"📊 **{analysis.name or analysis.symbol}** ({analysis.symbol}) — Full Analysis")
         lines.append("")
         
-        # Price & Signal
+       
         lines.append(f"💰 **Price:** {currency}{analysis.price:,.2f}")
         chg = analysis.change_percent
         chg_icon = "🟢" if chg >= 0 else "🔴"
@@ -34,7 +33,7 @@ class ScreenerFormatter:
         lines.append(f"📈 **Score:** {analysis.score:.0f}/100")
         lines.append("")
         
-        # Technical Analysis
+     
         tech = analysis.technical
         lines.append("**📉 Technical Analysis**")
         if tech.rsi is not None:
@@ -71,7 +70,7 @@ class ScreenerFormatter:
             lines.append(f"  • Volume: {tech.volume_ratio:.1f}x avg{vol_tag}")
         lines.append("")
         
-        # Fundamental Analysis
+       
         fund = analysis.fundamental
         lines.append("**📋 Fundamental Analysis**")
         if fund.pe_ratio is not None:
@@ -133,8 +132,8 @@ class ScreenerFormatter:
             lines.append("No stocks matched the criteria. Try adjusting filters.")
             return "\n".join(lines)
         
-        # Results table
-        for i, stock in enumerate(result.stocks[:15], 1):  # Max 15 results
+        
+        for i, stock in enumerate(result.stocks[:15], 1):  
             sig = signal_emoji.get(stock.signal, "⚪")
             currency = "$" if stock.market == Market.US else "₹"
             

@@ -1,213 +1,136 @@
 """
 Symbol resolution utilities for the FinSight chatbot.
-Maps natural company names to stock tickers and normalizes symbols.
-Extracted from entity_extractor.py for use by LangGraph agent tools.
+
+Uses Screener.in's autocomplete API as the primary resolution strategy
+for Indian stocks. This is 100% reliable for Indian stocks with zero
+US-bias, unlike Yahoo Finance Search which returns US ADRs.
+
+Strategy:
+    A. Edge-case alias lookup  (instant, handles nicknames like "jio")
+    B. Screener.in API search  (reliable, returns exact NSE/BSE tickers)
+    C. Predict fallback        (for extremely new IPOs — no verification)
+
+All static mappings live in ``chatbot.core.symbol_registry`` (single source
+of truth).  This module only contains *resolution logic*.
 """
 
-import re
 import logging
+import re
 from typing import Optional
+
+import requests
+
+from chatbot.core.symbol_registry import EDGE_CASE_ALIASES, INDICES
 
 logger = logging.getLogger(__name__)
 
+# ── Screener.in Search API ──────────────────────────────────────────────
 
-# ============================================================================
-# TOP NSE SYMBOL WHITELIST
-# ============================================================================
-
-NSE_KNOWN_SYMBOLS: set = {
-    # Nifty 50 & large-caps
-    "TCS", "RELIANCE", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR",
-    "SBIN", "BAJFINANCE", "BHARTIARTL", "KOTAKBANK", "WIPRO", "HCLTECH",
-    "ASIANPAINT", "AXISBANK", "MARUTI", "SUNPHARMA", "TITAN", "TATAMOTORS",
-    "TATASTEEL", "ULTRACEMCO", "LT", "NTPC", "POWERGRID", "ONGC",
-    "COALINDIA", "JSWSTEEL", "HINDALCO", "DRREDDY", "CIPLA", "DIVISLAB",
-    "ADANIENT", "ADANIPORTS", "ADANIGREEN", "ADANIPOWER", "BAJAJ-AUTO",
-    "BAJAJFINSV", "TECHM", "GRASIM", "NESTLEIND", "ITC", "BRITANNIA",
-    "DABUR", "MARICO", "GODREJCP", "VEDL", "ZOMATO", "PAYTM", "IRCTC",
-    "HAL", "BHEL", "LICI", "TATAPOWER", "TATACHEM", "TATACONSUM",
-    "TATAELXSI", "HEROMOTOCO", "EICHERMOT", "ASHOKLEY", "INDUSINDBK",
-    "BANKBARODA", "PNB", "YESBANK", "IDFCFIRSTB", "LTIM", "PERSISTENT",
-    "COFORGE", "DMART", "M&M",
-    # Mid-caps frequently asked about
-    "TATVA", "IRFC", "NHPC", "RECLTD", "PFC", "SAIL",
-    "NMDC", "RVNL", "IRCON", "HUDCO", "CANBK", "UNIONBANK",
-    "FEDERALBNK", "BANDHANBNK", "CHOLAFIN", "MUTHOOTFIN",
-    "SBICARD", "HDFCLIFE", "ICICIPRULI", "SBILIFE",
-    "PGHL", "AUROPHARMA", "LUPIN", "TORNTPHARM", "ALKEM",
-    "PIIND", "NAUKRI", "INDIGO", "SPICEJET", "TRENT",
-    "VOLTAS", "HAVELLS", "POLYCAB", "DIXON", "ABB",
-    "SIEMENS", "CUMMINSIND", "THERMAX", "GMRINFRA", "ADANIGAS",
-    # US stocks commonly asked about
-    "NVDA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA",
-    "NFLX", "AMD", "INTC", "DIS", "WMT", "KO", "PEP", "JNJ",
-    "JPM", "GS", "PYPL", "CRM", "ADBE", "UBER", "SPOT",
-    "SNAP", "ABNB", "PLTR", "COIN", "SNOW", "CRWD", "SHOP",
-    "BA", "GM", "V", "MA", "BRK-B",
-}
+_SCREENER_SEARCH_URL = "https://www.screener.in/api/company/search/"
+_SCREENER_HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
-# ============================================================================
-# COMPANY NAME → TICKER MAP
-# ============================================================================
+def get_ticker_from_screener(company_name: str) -> Optional[str]:
+    """
+    Uses Screener.in's autocomplete API to find the exact Indian stock ticker.
+    Returns the ticker with '.NS' appended, or None.
 
-COMPANY_NAME_MAP = {
-    # ------ INDIAN STOCKS (NSE) ------
-    # Tata Group
-    "tata steel": "TATASTEEL", "tata motors": "TATAMOTORS",
-    "tata power": "TATAPOWER", "tata chemicals": "TATACHEM",
-    "tata consumer": "TATACONSUM", "tata elxsi": "TATAELXSI",
-    "tcs": "TCS", "tata consultancy": "TCS",
-    # Reliance
-    "reliance": "RELIANCE", "reliance industries": "RELIANCE", "jio": "RELIANCE",
-    # Banking
-    "hdfc bank": "HDFCBANK", "hdfc": "HDFCBANK",
-    "icici bank": "ICICIBANK", "icici": "ICICIBANK",
-    "sbi": "SBIN", "state bank": "SBIN", "state bank of india": "SBIN",
-    "kotak bank": "KOTAKBANK", "kotak mahindra": "KOTAKBANK",
-    "axis bank": "AXISBANK", "indusind bank": "INDUSINDBK",
-    "bank of baroda": "BANKBARODA", "punjab national bank": "PNB", "pnb": "PNB",
-    "yes bank": "YESBANK", "idfc first bank": "IDFCFIRSTB",
-    # IT
-    "infosys": "INFY", "wipro": "WIPRO",
-    "hcl tech": "HCLTECH", "hcl technologies": "HCLTECH",
-    "tech mahindra": "TECHM", "ltimindtree": "LTIM",
-    "persistent systems": "PERSISTENT", "coforge": "COFORGE",
-    # Automobile
-    "maruti": "MARUTI", "maruti suzuki": "MARUTI",
-    "mahindra": "M&M", "mahindra and mahindra": "M&M", "m&m": "M&M",
-    "bajaj auto": "BAJAJ-AUTO", "hero motocorp": "HEROMOTOCO",
-    "eicher motors": "EICHERMOT", "ashok leyland": "ASHOKLEY",
-    # Pharma
-    "sun pharma": "SUNPHARMA", "dr reddy": "DRREDDY", "dr reddys": "DRREDDY",
-    "cipla": "CIPLA", "divi's lab": "DIVISLAB", "divis lab": "DIVISLAB",
-    # FMCG
-    "hindustan unilever": "HINDUNILVR", "hul": "HINDUNILVR",
-    "itc": "ITC", "nestle": "NESTLEIND", "nestle india": "NESTLEIND",
-    "britannia": "BRITANNIA", "dabur": "DABUR",
-    "godrej consumer": "GODREJCP", "marico": "MARICO",
-    # Others
-    "adani enterprises": "ADANIENT", "adani ports": "ADANIPORTS",
-    "adani green": "ADANIGREEN", "adani power": "ADANIPOWER",
-    "bajaj finance": "BAJFINANCE", "bajaj finserv": "BAJAJFINSV",
-    "asian paints": "ASIANPAINT", "titan": "TITAN", "titan company": "TITAN",
-    "ultratech cement": "ULTRACEMCO", "grasim": "GRASIM",
-    "bharti airtel": "BHARTIARTL", "airtel": "BHARTIARTL",
-    "lic": "LICI", "life insurance corporation": "LICI",
-    "power grid": "POWERGRID", "ntpc": "NTPC", "ongc": "ONGC",
-    "coal india": "COALINDIA", "hindalco": "HINDALCO",
-    "jsw steel": "JSWSTEEL", "vedanta": "VEDL",
-    "larsen": "LT", "larsen and toubro": "LT", "l&t": "LT",
-    "zomato": "ZOMATO", "paytm": "PAYTM",
-    "dmart": "DMART", "avenue supermarts": "DMART",
-    "irctc": "IRCTC", "hal": "HAL", "hindustan aeronautics": "HAL", "bhel": "BHEL",
-    # ------ US STOCKS ------
-    "nvidia": "NVDA", "apple": "AAPL", "microsoft": "MSFT",
-    "google": "GOOGL", "alphabet": "GOOGL", "amazon": "AMZN",
-    "meta": "META", "facebook": "META", "tesla": "TSLA", "netflix": "NFLX",
-    "amd": "AMD", "intel": "INTC", "disney": "DIS", "walmart": "WMT",
-    "coca cola": "KO", "pepsi": "PEP", "pepsico": "PEP",
-    "johnson and johnson": "JNJ", "jpmorgan": "JPM", "jp morgan": "JPM",
-    "goldman sachs": "GS", "berkshire": "BRK-B", "berkshire hathaway": "BRK-B",
-    "paypal": "PYPL", "salesforce": "CRM", "adobe": "ADBE",
-    "uber": "UBER", "spotify": "SPOT", "snapchat": "SNAP", "snap": "SNAP",
-    "airbnb": "ABNB", "palantir": "PLTR", "coinbase": "COIN",
-    "snowflake": "SNOW", "crowdstrike": "CRWD", "shopify": "SHOP",
-    "boeing": "BA", "ford": "F", "general motors": "GM",
-    "visa": "V", "mastercard": "MA",
-}
+    Screener.in is trusted completely — no yfinance verification needed.
+    """
+    try:
+        response = requests.get(
+            _SCREENER_SEARCH_URL,
+            params={"q": company_name},
+            headers=_SCREENER_HEADERS,
+            timeout=5,
+        )
+        if response.status_code == 200:
+            results = response.json()
+            if results and len(results) > 0:
+                # Screener returns urls like "/company/ZOMATO/consolidated/"
+                # We need the segment right after "company/", not the last one.
+                company_url = results[0].get("url", "")
+                parts = [p for p in company_url.split("/") if p]
+                ticker = None
+                for i, part in enumerate(parts):
+                    if part.lower() == "company" and i + 1 < len(parts):
+                        ticker = parts[i + 1].upper()
+                        break
+                if ticker:
+                    resolved = f"{ticker}.NS"
+                    logger.info(
+                        f"Screener.in search: '{company_name}' → {resolved}"
+                    )
+                    return resolved
+    except Exception as e:
+        logger.debug(f"Screener.in search failed for '{company_name}': {e}")
+
+    return None
 
 
-# ============================================================================
-# INDEX MAPPINGS
-# ============================================================================
-
-INDICES = {
-    "NIFTY": "NIFTY 50", "NIFTY50": "NIFTY 50", "NIFTY 50": "NIFTY 50",
-    "SENSEX": "SENSEX", "BSE SENSEX": "SENSEX",
-    "BANKNIFTY": "BANK NIFTY", "BANK NIFTY": "BANK NIFTY",
-    "NIFTYIT": "NIFTY IT", "NIFTY IT": "NIFTY IT",
-    "NIFTYFIN": "NIFTY FINANCIAL", "NIFTYPHARMA": "NIFTY PHARMA",
-    "NIFTYAUTO": "NIFTY AUTO", "NIFTYMETAL": "NIFTY METAL",
-    "NIFTYENERGY": "NIFTY ENERGY", "NIFTYFMCG": "NIFTY FMCG",
-    "NIFTYNEXT50": "NIFTY NEXT 50", "NIFTYMIDCAP": "NIFTY MIDCAP",
-    "MIDCAP100": "NIFTY MIDCAP 100",
-}
+# ── Helper: clean company name for prediction ───────────────────────────
 
 
-# ============================================================================
-# SYMBOL RESOLUTION
-# ============================================================================
+def clean_company_name(name: str) -> str:
+    """
+    Clean a raw company name for ticker prediction.
+    Removes common corporate suffixes, spaces, and non-alphanumeric characters.
+    Result is always UPPERCASE with no spaces.
+    """
+    name = re.sub(
+        r"\b(ltd|limited|corp|corporation|inc|company|co)\b",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+    # Remove ALL spaces and special characters — ticker symbols never have them
+    name = re.sub(r"[^a-zA-Z0-9]", "", name)
+    return name.upper()
+
+
+# ── Main resolution function ────────────────────────────────────────────
+
 
 def resolve_symbol(name: str) -> Optional[str]:
     """
-    Resolve a natural-language company name or ticker to a valid stock symbol.
+    Resolve a company name or ticker to a valid stock symbol.
 
-    Tries in order:
-    1. Exact match in COMPANY_NAME_MAP (case-insensitive)
-    2. Direct uppercase match in NSE_KNOWN_SYMBOLS
-    3. Fuzzy match via rapidfuzz (typo recovery)
+    Strategy:
+        1. Check edge-case aliases (nicknames like "jio", "hul")
+        2. Screener.in API search (trusted — no verification needed)
+        3. Predict fallback (clean name → append .NS)
 
     Returns:
-        Resolved symbol string, or None if unresolvable.
+        Resolved symbol string (e.g. 'ZOMATO.NS'), or None.
     """
     if not name or not name.strip():
         return None
 
-    name_clean = name.strip()
-    name_lower = name_clean.lower()
+    raw_name_lower = name.strip().lower()
 
-    # Strategy 1: Exact company name match
-    # Sort by length (longest first) to prefer "tata consultancy" over "tata"
-    for key in sorted(COMPANY_NAME_MAP.keys(), key=len, reverse=True):
-        if key in name_lower:
-            return COMPANY_NAME_MAP[key]
+    # ── Step 1: Edge-case alias lookup ──────────────────────────────
+    if raw_name_lower in EDGE_CASE_ALIASES:
+        alias = EDGE_CASE_ALIASES[raw_name_lower]
+        resolved = f"{alias}.NS"
+        logger.info(f"Alias match: '{name}' → {resolved}")
+        return resolved
 
-    # Strategy 2: Direct symbol lookup (already uppercase)
-    name_upper = name_clean.upper()
-    if name_upper in NSE_KNOWN_SYMBOLS:
-        return name_upper
+    # ── Step 2: Screener.in API (trusted, no verification) ──────────
+    screener_ticker = get_ticker_from_screener(name)
+    if screener_ticker:
+        return screener_ticker
 
-    # Strategy 3: Fuzzy matching (typo recovery)
-    try:
-        from rapidfuzz import process as fuzz_process, fuzz
+    # ── Step 3: Predict fallback (clean → .NS) ──────────────────────
+    cleaned = clean_company_name(name)
+    if not cleaned:
+        return None
 
-        # Build candidates: individual words + bigrams
-        words_raw = name_lower.split()
-        candidates = [w for w in words_raw if len(w) >= 4]
-        for i in range(len(words_raw) - 1):
-            bigram = f"{words_raw[i]} {words_raw[i + 1]}"
-            if len(bigram) >= 4:
-                candidates.append(bigram)
-        for i in range(len(words_raw) - 2):
-            trigram = f"{words_raw[i]} {words_raw[i + 1]} {words_raw[i + 2]}"
-            candidates.append(trigram)
+    predicted_ns = f"{cleaned}.NS"
+    logger.info(f"Predicted NSE ticker: '{name}' → {predicted_ns}")
+    return predicted_ns
 
-        best_score, best_symbol = 0, None
-        name_keys = list(COMPANY_NAME_MAP.keys())
 
-        for candidate in candidates:
-            result = fuzz_process.extractOne(
-                candidate, name_keys, scorer=fuzz.WRatio,
-            )
-            if result and result[1] > best_score:
-                best_score = result[1]
-                best_symbol = COMPANY_NAME_MAP[result[0]]
-
-        if best_score >= 85 and best_symbol:
-            logger.info(f"Fuzzy resolved: '{name}' → {best_symbol} (score={best_score})")
-            return best_symbol
-
-    except ImportError:
-        import difflib
-        name_keys = list(COMPANY_NAME_MAP.keys())
-        matches = difflib.get_close_matches(name_lower, name_keys, n=1, cutoff=0.75)
-        if matches:
-            best_symbol = COMPANY_NAME_MAP[matches[0]]
-            logger.info(f"Difflib resolved: '{name}' → {best_symbol}")
-            return best_symbol
-        
-    return None
+# ── Index resolution ────────────────────────────────────────────────────
 
 
 def resolve_index(name: str) -> Optional[str]:

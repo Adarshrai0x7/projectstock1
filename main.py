@@ -6,6 +6,7 @@ Includes REST and WebSocket endpoints, health checks, and CORS support.
 
 import json
 import logging
+import re
 import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -25,17 +26,12 @@ from chatbot.agent import get_agent, get_graph
 from common.models.schemas import ChatRequest, ChatResponse, HealthResponse
 
 
-# Configure logging
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# LIFESPAN MANAGEMENT
-# ============================================================================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -64,9 +60,6 @@ async def lifespan(app: FastAPI):
     logger.info("👋 Shutting down FinSight Chatbot API...")
 
 
-# ============================================================================
-# APP INITIALIZATION
-# ============================================================================
 
 app = FastAPI(
     title="FinSight Chatbot API",
@@ -75,12 +68,25 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Rate Limiting
-limiter = Limiter(key_func=get_remote_address)
+# Rate limiting — only enable if configured
+limiter = Limiter(
+    key_func=get_remote_address,
+    enabled=settings.rate_limit_enabled,
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS Configuration
+# Dynamic rate-limit string from settings
+_RATE_LIMIT = f"{settings.rate_limit_per_minute}/minute"
+
+
+def _validate_symbol(symbol: str) -> str:
+    """Validate and sanitize a stock/index symbol."""
+    if not re.match(r'^[A-Za-z0-9._&-]{1,20}$', symbol):
+        raise HTTPException(status_code=400, detail=f"Invalid symbol format: '{symbol}'")
+    return symbol.upper()
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -90,19 +96,12 @@ app.add_middleware(
 )
 
 
-# ============================================================================
-# REQUEST MODELS
-# ============================================================================
-
 class MessageInput(BaseModel):
     """Simple message input for backward compatibility."""
     message: str
     session_id: Optional[str] = None
 
 
-# ============================================================================
-# ENDPOINTS
-# ============================================================================
 
 @app.get("/", response_model=HealthResponse)
 async def root():
@@ -123,7 +122,7 @@ async def health_check():
 
 
 @app.post("/chat", response_model=ChatResponse)
-@limiter.limit("20/minute")
+@limiter.limit(_RATE_LIMIT)
 async def chat_endpoint(request: Request, input: MessageInput):
     """
     Main chat endpoint — powered by LangGraph ReAct agent.
@@ -149,7 +148,7 @@ async def chat_endpoint(request: Request, input: MessageInput):
 
 
 @app.post("/v2/chat", response_model=ChatResponse)
-@limiter.limit("20/minute")
+@limiter.limit(_RATE_LIMIT)
 async def chat_v2_endpoint(request: Request, request_body: ChatRequest):
     """V2 chat endpoint with full request model."""
     try:
@@ -165,12 +164,9 @@ async def chat_v2_endpoint(request: Request, request_body: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================================================
-# STREAMING ENDPOINT
-# ============================================================================
 
 @app.post("/stream")
-@limiter.limit("20/minute")
+@limiter.limit(_RATE_LIMIT)
 async def stream_chat(request: Request, input: MessageInput):
     """
     Streaming chat endpoint — returns Server-Sent Events (SSE).
@@ -205,9 +201,9 @@ async def stream_chat(request: Request, input: MessageInput):
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
 
         full_reply = "".join(full_reply_parts)
-        intent = agent._derive_intent(tools_used, input.message.strip())
+        intent = agent.derive_intent(tools_used, input.message.strip())
         try:
-            suggestions = await agent._get_suggestions(full_reply[:500])
+            suggestions = await agent.get_suggestions(full_reply[:500])
         except Exception:
             suggestions = []
 
@@ -220,9 +216,6 @@ async def stream_chat(request: Request, input: MessageInput):
     )
 
 
-# ============================================================================
-# WEBSOCKET ENDPOINT
-# ============================================================================
 
 @app.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
@@ -266,18 +259,17 @@ async def websocket_chat(websocket: WebSocket):
         await websocket.close()
 
 
-# ============================================================================
-# DIRECT DATA ENDPOINTS
-# ============================================================================
 
 @app.get("/market/{symbol}")
-async def get_stock_price(symbol: str):
+@limiter.limit(_RATE_LIMIT)
+async def get_stock_price(request: Request, symbol: str):
     """Get current price for a stock symbol."""
+    symbol = _validate_symbol(symbol)
     from common.data_services.market_data import get_market_data_service
     from chatbot.modules.market_formatter import MarketFormatter
     
     service = get_market_data_service()
-    price = await service.get_stock_price(symbol.upper())
+    price = await service.get_stock_price(symbol)
     
     if price:
         return {
@@ -292,12 +284,14 @@ async def get_stock_price(symbol: str):
 
 
 @app.get("/index/{index_name}")
-async def get_index_data(index_name: str):
+@limiter.limit(_RATE_LIMIT)
+async def get_index_data(request: Request, index_name: str):
     """Get current data for a market index."""
+    index_name = _validate_symbol(index_name)
     from common.data_services.market_data import get_market_data_service
     
     service = get_market_data_service()
-    data = await service.get_index_data(index_name.upper())
+    data = await service.get_index_data(index_name)
     
     if data:
         return {
@@ -311,14 +305,17 @@ async def get_index_data(index_name: str):
 
 
 @app.get("/news")
-async def get_news(symbol: Optional[str] = None, limit: int = 5):
+@limiter.limit(_RATE_LIMIT)
+async def get_news(request: Request, symbol: Optional[str] = None, limit: int = 5):
     """Get financial news (optionally filtered by stock symbol)."""
     from common.data_services.news_service import get_news_service
     
     service = get_news_service()
     
+    limit = min(max(limit, 1), 50)  # clamp between 1–50
     if symbol:
-        articles = await service.get_stock_news(symbol.upper(), limit)
+        symbol = _validate_symbol(symbol)
+        articles = await service.get_stock_news(symbol, limit)
     else:
         articles = await service.get_market_news(limit)
     
@@ -336,12 +333,10 @@ async def get_news(symbol: Optional[str] = None, limit: int = 5):
     }
 
 
-# ============================================================================
-# SCREENER ENDPOINTS
-# ============================================================================
 
 @app.get("/screener/screens")
-async def list_screens():
+@limiter.limit(_RATE_LIMIT)
+async def list_screens(request: Request):
     """List all available pre-built screener screens."""
     from screener.screener import get_screener_service
     screener = get_screener_service()
@@ -349,8 +344,10 @@ async def list_screens():
 
 
 @app.get("/analyze/{symbol}")
-async def analyze_stock(symbol: str):
+@limiter.limit(_RATE_LIMIT)
+async def analyze_stock(request: Request, symbol: str):
     """Get full technical + fundamental analysis for a stock."""
+    symbol = _validate_symbol(symbol)
     from screener.screener import get_screener_service
     screener = get_screener_service()
     analysis = await screener.analyze_stock(symbol)
@@ -360,7 +357,8 @@ async def analyze_stock(symbol: str):
 
 
 @app.get("/screener/{screen_name}")
-async def run_screen(screen_name: str):
+@limiter.limit(_RATE_LIMIT)
+async def run_screen(request: Request, screen_name: str):
     """
     Run a pre-built stock screen.
     Options: undervalued, momentum, oversold, high_dividend, strong_fundamentals
@@ -379,7 +377,8 @@ class CustomScreenInput(BaseModel):
 
 
 @app.post("/screener/custom")
-async def custom_screen(input: CustomScreenInput):
+@limiter.limit(_RATE_LIMIT)
+async def custom_screen(request: Request, input: CustomScreenInput):
     """Run a custom stock screen with user-defined filters."""
     from screener.screener import get_screener_service
     screener = get_screener_service()
@@ -391,9 +390,7 @@ async def custom_screen(input: CustomScreenInput):
     return result.model_dump()
 
 
-# ============================================================================
-# MAIN ENTRY POINT
-# ============================================================================
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -3,8 +3,8 @@ Response formatting for market data.
 Converts raw data into beautiful, conversational responses.
 """
 
-from typing import Optional, List
-from common.models.schemas import StockPrice, IndexData, StockDetails, MarketMovers, StockHistory, Market
+from typing import Optional
+from common.models.schemas import StockPrice, IndexData, StockDetails, StockHistory, Market
 
 
 class MarketFormatter:
@@ -13,6 +13,15 @@ class MarketFormatter:
     Uses emojis and clear formatting for better readability.
     """
     
+    @staticmethod
+    def _get_change_indicators(change: float) -> tuple[str, str, str]:
+        """Return (trend_emoji, color_emoji, sign) based on change value."""
+        if change > 0:
+            return "📈", "🟢", "+"
+        elif change < 0:
+            return "📉", "🔴", ""
+        return "⚪", "⚪", ""
+
     @staticmethod
     def format_price(price: float, currency: str = "₹") -> str:
         """Format price with currency symbol and thousand separators."""
@@ -26,29 +35,18 @@ class MarketFormatter:
     @staticmethod
     def format_change(change: float, change_percent: float) -> str:
         """Format price change with emoji indicator."""
-        if change > 0:
-            emoji = "🟢"
-            sign = "+"
-        elif change < 0:
-            emoji = "🔴"
-            sign = ""
-        else:
-            emoji = "⚪"
-            sign = ""
-        
-        return f"{emoji} {sign}₹{abs(change):.2f} ({sign}{change_percent:.2f}%)"
+        _, color, sign = MarketFormatter._get_change_indicators(change)
+        return f"{color} {sign}₹{abs(change):.2f} ({sign}{change_percent:.2f}%)"
     
     @staticmethod
     def format_stock_price(stock: StockPrice) -> str:
         """Format stock price into a conversational response."""
-        change_emoji = "📈" if stock.change >= 0 else "📉"
-        change_color = "🟢" if stock.change >= 0 else "🔴"
-        sign = "+" if stock.change >= 0 else ""
+        trend, color, sign = MarketFormatter._get_change_indicators(stock.change)
         
-        response = f"""**{stock.name or stock.symbol}** ({stock.symbol}) {change_emoji}
+        response = f"""**{stock.name or stock.symbol}** ({stock.symbol}) {trend}
 
 💰 **Current Price:** ₹{stock.price:,.2f}
-{change_color} **Change:** {sign}₹{abs(stock.change):.2f} ({sign}{stock.change_percent:.2f}%)"""
+{color} **Change:** {sign}₹{abs(stock.change):.2f} ({sign}{stock.change_percent:.2f}%)"""
         
         # Add day's range if available
         if stock.high and stock.low:
@@ -64,21 +62,17 @@ class MarketFormatter:
     @staticmethod
     def format_index(index: IndexData) -> str:
         """Format index data into a conversational response."""
-        change_emoji = "📈" if index.change >= 0 else "📉"
-        change_color = "🟢" if index.change >= 0 else "🔴"
-        sign = "+" if index.change >= 0 else ""
+        trend, color, sign = MarketFormatter._get_change_indicators(index.change)
         
-        return f"""**{index.name}** {change_emoji}
+        return f"""**{index.name}** {trend}
 
 🎯 **Current Value:** {index.value:,.2f}
-{change_color} **Change:** {sign}{abs(index.change):.2f} ({sign}{index.change_percent:.2f}%)"""
+{color} **Change:** {sign}{abs(index.change):.2f} ({sign}{index.change_percent:.2f}%)"""
     
     @staticmethod
     def format_stock_details(details: StockDetails, price: Optional[StockPrice] = None) -> str:
         """Format detailed stock information."""
-        response = f"""**{details.name}** ({details.symbol}) 📊
-
-"""
+        response = f"**{details.name}** ({details.symbol}) 📊\n\n"
         
         if details.sector:
             response += f"🏢 **Sector:** {details.sector}\n"
@@ -114,19 +108,16 @@ class MarketFormatter:
         response = "📊 **Market Summary**\n\n"
         
         for name, index in indices.items():
-            change_emoji = "🟢" if index.change >= 0 else "🔴"
-            sign = "+" if index.change >= 0 else ""
-            response += f"**{name}:** {index.value:,.2f} {change_emoji} {sign}{index.change_percent:.2f}%\n"
+            _, color, sign = MarketFormatter._get_change_indicators(index.change)
+            response += f"**{name}:** {index.value:,.2f} {color} {sign}{index.change_percent:.2f}%\n"
         
         return response
     
     @staticmethod
     def format_quick_price(stock: StockPrice) -> str:
         """Format a quick one-line price response."""
-        change_emoji = "🟢" if stock.change >= 0 else "🔴"
-        sign = "+" if stock.change >= 0 else ""
-        
-        return f"{stock.symbol}: ₹{stock.price:,.2f} {change_emoji} {sign}{stock.change_percent:.2f}%"
+        _, color, sign = MarketFormatter._get_change_indicators(stock.change)
+        return f"{stock.symbol}: ₹{stock.price:,.2f} {color} {sign}{stock.change_percent:.2f}%"
     
     @staticmethod
     def _format_volume(volume: int) -> str:
@@ -137,22 +128,18 @@ class MarketFormatter:
             return f"{volume/100000:.2f} L"
         elif volume >= 1000:
             return f"{volume/1000:.1f}K"
-        else:
-            return str(volume)
+        return str(volume)
     
     @staticmethod
     def format_error(symbol: str, error_type: str = "not_found") -> str:
         """Format error messages."""
-        if error_type == "not_found":
-            return f"❓ Sorry, I couldn't find data for **{symbol}**. Please check the symbol and try again."
-        elif error_type == "market_closed":
-            return f"🌙 Markets are currently closed. Showing last available price for **{symbol}**."
-        elif error_type == "timeout":
-            return f"⏱️ The request timed out. Please try again in a moment."
-        elif error_type == "history_unavailable":
-            return f"📊 Sorry, I couldn't fetch historical data for **{symbol}**. The stock might be newly listed or data is temporarily unavailable."
-        else:
-            return f"⚠️ There was an error fetching data for **{symbol}**. Please try again."
+        messages = {
+            "not_found": f"❓ Sorry, I couldn't find data for **{symbol}**. Please check the symbol and try again.",
+            "market_closed": f"🌙 Markets are currently closed. Showing last available price for **{symbol}**.",
+            "timeout": "⏱️ The request timed out. Please try again in a moment.",
+            "history_unavailable": f"📊 Sorry, I couldn't fetch historical data for **{symbol}**. The stock might be newly listed or data is temporarily unavailable."
+        }
+        return messages.get(error_type, f"⚠️ There was an error fetching data for **{symbol}**. Please try again.")
     
     @staticmethod
     def format_stock_history(history: StockHistory) -> str:
@@ -164,16 +151,12 @@ class MarketFormatter:
         lines = [f"📊 **{name_display}** — Last {days_count} Trading Days\n"]
         
         for day in history.days:
-            # Format change indicator
             if day.change_percent is not None:
-                if day.change_percent >= 0:
-                    change_str = f"🟢 +{day.change_percent:.2f}%"
-                else:
-                    change_str = f"🔴 {day.change_percent:.2f}%"
+                _, color, sign = MarketFormatter._get_change_indicators(day.change_percent)
+                change_str = f"{color} {sign}{day.change_percent:.2f}%"
             else:
                 change_str = "—"
             
-            # Format the date nicely
             try:
                 from datetime import datetime
                 dt = datetime.strptime(day.date, '%Y-%m-%d')
@@ -181,19 +164,13 @@ class MarketFormatter:
             except Exception:
                 date_str = day.date
             
-            lines.append(
-                f"📅 **{date_str}**: {currency}{day.close:,.2f}  {change_str}"
-            )
+            lines.append(f"📅 **{date_str}**: {currency}{day.close:,.2f}  {change_str}")
         
-        # Overall summary
         if history.overall_change_percent is not None:
-            if history.overall_change_percent >= 0:
-                overall = f"🟢 +{history.overall_change_percent:.2f}%"
-            else:
-                overall = f"🔴 {history.overall_change_percent:.2f}%"
+            _, color, sign = MarketFormatter._get_change_indicators(history.overall_change_percent)
+            overall = f"{color} {sign}{history.overall_change_percent:.2f}%"
             lines.append(f"\n**Overall Change**: {overall} over {days_count} days")
         
-        # Add market label
         market_label = "US Market" if history.market == Market.US else "NSE"
         lines.append(f"\n_Source: {market_label} via yfinance_")
         

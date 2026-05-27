@@ -4,17 +4,10 @@ Provides Q&A for trading concepts, how-to guides, and educational content.
 """
 
 from typing import Optional, List, Dict, Any
-import json
-import os
-from pathlib import Path
 
-
-# ============================================================================
-# TRADING KNOWLEDGE BASE
-# ============================================================================
 
 TRADING_KNOWLEDGE = {
-    # ORDER TYPES
+  
     "market_order": {
         "title": "Market Order",
         "content": """A **Market Order** is an order to buy or sell a stock immediately at the best available current price.
@@ -81,7 +74,7 @@ TRADING_KNOWLEDGE = {
         "keywords": ["bracket order", "bo", "bracket", "three leg order"]
     },
     
-    # TRADING CONCEPTS
+    
     "intraday": {
         "title": "Intraday Trading",
         "content": """**Intraday Trading** means buying and selling stocks within the same trading day.
@@ -137,8 +130,6 @@ TRADING_KNOWLEDGE = {
 ⚠️ **Risk Warning:** Margin trading is risky. You can lose more than your initial investment.""",
         "keywords": ["margin", "leverage", "borrowed", "mis", "margin trading"]
     },
-    
-    # TECHNICAL ANALYSIS
     "candlestick": {
         "title": "Candlestick Patterns",
         "content": """**Candlestick Charts** show price movement with visual candles.
@@ -201,7 +192,7 @@ TRADING_KNOWLEDGE = {
         "keywords": ["rsi", "relative strength", "overbought", "oversold", "momentum"]
     },
     
-    # FUNDAMENTAL TERMS
+   
     "pe_ratio": {
         "title": "P/E Ratio (Price to Earnings)",
         "content": """**P/E Ratio** shows how much investors pay per rupee of company earnings.
@@ -239,7 +230,6 @@ TRADING_KNOWLEDGE = {
         "keywords": ["market cap", "market capitalization", "cap", "large cap", "mid cap", "small cap"]
     },
     
-    # PLATFORM/HOW-TO
     "how_to_buy": {
         "title": "How to Buy Stocks",
         "content": """**Steps to Buy Stocks:**

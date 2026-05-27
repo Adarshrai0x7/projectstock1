@@ -97,9 +97,7 @@ class TechnicalIndicators:
             logger.error(f"Error calculating indicators for {symbol}: {e}")
             return self._empty_indicators()
     
-    # ========================================================================
-    # RSI (Relative Strength Index)
-    # ========================================================================
+
     
     def calculate_rsi(self, df, period: int = 14) -> Dict[str, Any]:
         """
@@ -127,7 +125,7 @@ class TechnicalIndicators:
             
             current_rsi = float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None
             
-            # Determine signal
+      
             signal = "NEUTRAL"
             description = ""
             if current_rsi is not None:
@@ -149,10 +147,7 @@ class TechnicalIndicators:
             logger.error(f"RSI calculation error: {e}")
             return {"value": None, "signal": "NEUTRAL", "description": "RSI unavailable"}
     
-    # ========================================================================
-    # SMA (Simple Moving Average)
-    # ========================================================================
-    
+   
     def calculate_sma(self, df, period: int = 20) -> Dict[str, Any]:
         """
         Calculate Simple Moving Average.
@@ -182,9 +177,7 @@ class TechnicalIndicators:
             logger.error(f"SMA-{period} calculation error: {e}")
             return {"value": None, "signal": "NEUTRAL", "description": f"SMA-{period} unavailable"}
     
-    # ========================================================================
-    # EMA (Exponential Moving Average)
-    # ========================================================================
+   
     
     def calculate_ema(self, df, period: int = 12) -> Dict[str, Any]:
         """
@@ -207,10 +200,7 @@ class TechnicalIndicators:
         except Exception as e:
             logger.error(f"EMA-{period} calculation error: {e}")
             return {"value": None, "signal": "NEUTRAL", "description": f"EMA-{period} unavailable"}
-    
-    # ========================================================================
-    # MACD (Moving Average Convergence Divergence)
-    # ========================================================================
+
     
     def calculate_macd(self, df) -> Dict[str, Any]:
         """
@@ -267,9 +257,7 @@ class TechnicalIndicators:
             logger.error(f"MACD calculation error: {e}")
             return {"macd": None, "signal_line": None, "histogram": None, "signal": "NEUTRAL", "description": "MACD unavailable"}
     
-    # ========================================================================
-    # Bollinger Bands
-    # ========================================================================
+
     
     def calculate_bollinger(self, df, period: int = 20, std_dev: float = 2.0) -> Dict[str, Any]:
         """
@@ -294,11 +282,10 @@ class TechnicalIndicators:
             current_upper = float(upper.iloc[-1])
             current_lower = float(lower.iloc[-1])
             current_sma = float(sma.iloc[-1])
-            
-            # Band width (measure of volatility)
+  
             band_width = ((current_upper - current_lower) / current_sma) * 100
             
-            # Position within bands (0 = lower, 1 = upper)
+        
             band_position = (current_price - current_lower) / (current_upper - current_lower) if (current_upper - current_lower) > 0 else 0.5
             
             signal = "NEUTRAL"
@@ -327,10 +314,7 @@ class TechnicalIndicators:
         except Exception as e:
             logger.error(f"Bollinger calculation error: {e}")
             return {"upper": None, "lower": None, "middle": None, "signal": "NEUTRAL", "description": "Bollinger unavailable"}
-    
-    # ========================================================================
-    # Volume Analysis
-    # ========================================================================
+
     
     def calculate_volume_analysis(self, df, period: int = 20) -> Dict[str, Any]:
         """
@@ -369,11 +353,7 @@ class TechnicalIndicators:
         except Exception as e:
             logger.error(f"Volume analysis error: {e}")
             return {"current_volume": None, "avg_volume_20d": None, "volume_ratio": None, "description": "Volume unavailable"}
-    
-    # ========================================================================
-    # Composite Signal & Score
-    # ========================================================================
-    
+
     def _composite_signal(self, indicators: Dict) -> str:
         """Generate a composite BUY/SELL/HOLD signal from all indicators."""
         buy_count = 0
@@ -397,7 +377,7 @@ class TechnicalIndicators:
             elif indicators["macd"]["signal"] == "SELL":
                 sell_count += 1
         
-        # Bollinger
+  
         if "bollinger" in indicators and indicators["bollinger"].get("signal"):
             total += 1
             if indicators["bollinger"]["signal"] == "BUY":
@@ -426,16 +406,14 @@ class TechnicalIndicators:
         """
         scores = []
         
-        # RSI contributes (inverted scale for oversold)
+       
         rsi_val = indicators.get("rsi", {}).get("value")
         if rsi_val is not None:
-            # RSI 30 = score 80 (oversold = buy opportunity)
-            # RSI 50 = score 50 (neutral)
-            # RSI 70 = score 20 (overbought = sell risk)
+            
             rsi_score = max(0, min(100, 100 - rsi_val))
             scores.append(rsi_score)
         
-        # SMA signals
+     
         for key in ["sma_20", "sma_50"]:
             sig = indicators.get(key, {}).get("signal")
             if sig == "BUY":
@@ -445,7 +423,7 @@ class TechnicalIndicators:
             else:
                 scores.append(50)
         
-        # MACD
+       
         macd_sig = indicators.get("macd", {}).get("signal")
         if macd_sig == "BUY":
             scores.append(75)
@@ -454,10 +432,10 @@ class TechnicalIndicators:
         else:
             scores.append(50)
         
-        # Bollinger position
+       
         bb_pos = indicators.get("bollinger", {}).get("band_position")
         if bb_pos is not None:
-            # Lower position = higher score (buy opportunity)
+           
             bb_score = max(0, min(100, (1 - bb_pos) * 100))
             scores.append(bb_score)
         
@@ -488,9 +466,7 @@ class TechnicalIndicators:
             "vwap": {"value": None, "signal": "NEUTRAL", "description": "Data unavailable"},
         }
     
-    # ========================================================================
-    # Extended Indicators (pandas-ta required)
-    # ========================================================================
+
     
     def get_extended_indicators(self, df) -> Dict[str, Any]:
         """Calculate advanced indicators using pandas-ta."""
@@ -499,7 +475,7 @@ class TechnicalIndicators:
             return extended
             
         try:
-            # 1. Supertrend (7, 3)
+            
             sti = df.ta.supertrend(length=7, multiplier=3)
             if sti is not None and not sti.empty:
                 direction_col = [c for c in sti.columns if c.startswith('SUPERTd_')][0]
@@ -517,7 +493,7 @@ class TechnicalIndicators:
                     "description": desc
                 }
                 
-            # 2. ADX (Average Directional Index) — trend strength
+           
             adx_df = df.ta.adx(length=14)
             if adx_df is not None and not adx_df.empty:
                 adx_col = [c for c in adx_df.columns if c.startswith('ADX_')][0]
@@ -531,7 +507,7 @@ class TechnicalIndicators:
                     "description": f"ADX is {adx_val:.1f} ({desc})"
                 }
                 
-            # 3. Stochastic Oscillator
+    
             stoch_df = df.ta.stoch()
             if stoch_df is not None and not stoch_df.empty:
                 k_col = [c for c in stoch_df.columns if c.startswith('STOCHk_')][0]
@@ -556,9 +532,7 @@ class TechnicalIndicators:
                     "signal": signal,
                     "description": desc
                 }
-                
-            # 4. VWAP (Volume Weighted Average Price)
-            # VWAP requires an intraday timeframe typically, but pandas-ta can approximate
+         
             vwap_df = df.ta.vwap()
             if vwap_df is not None and not vwap_df.empty:
                 vwap_val = float(vwap_df.iloc[-1])

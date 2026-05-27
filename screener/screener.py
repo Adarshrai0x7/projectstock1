@@ -24,9 +24,6 @@ from screener.technical_indicators import get_indicator_service
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# NIFTY 50 STOCK UNIVERSE (Default scan list)
-# ============================================================================
 
 NIFTY_50 = [
     "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
@@ -100,10 +97,7 @@ class ScreenerService:
         """Initialize screener with shared services."""
         self.market_service = get_market_data_service()
         self.indicators = get_indicator_service()
-    
-    # ========================================================================
-    # Main Screening Methods
-    # ========================================================================
+   
     
     async def analyze_stock(self, symbol: str) -> Optional[StockAnalysis]:
         """
@@ -116,16 +110,15 @@ class ScreenerService:
             StockAnalysis with all indicators and signal
         """
         try:
-            # Detect market and get yfinance symbol
+    
             yf_symbol, detected_market = self.market_service._detect_market(symbol)
             
-            # Get fundamental data from yfinance
+       
             fundamental = await self._get_fundamentals(yf_symbol, symbol)
             
-            # Get technical indicators (needs price history)
+         
             tech_data = self.indicators.get_all_indicators(yf_symbol, period="6mo")
-            
-            # Build TechnicalIndicators model
+
             technical = TechnicalIndicators(
                 rsi=tech_data.get("rsi", {}).get("value"),
                 sma_20=tech_data.get("sma_20", {}).get("value"),
@@ -146,19 +139,18 @@ class ScreenerService:
                 stochastic_k=tech_data.get("stochastic", {}).get("k"),
             )
             
-            # Get current price
+      
             current_price = tech_data.get("current_price", 0)
             if current_price == 0:
                 stock_price = await self.market_service.get_stock_price(symbol)
                 if stock_price:
                     current_price = stock_price.price
-            
-            # Get price change
+  
             stock_price = await self.market_service.get_stock_price(symbol)
             change_pct = stock_price.change_percent if stock_price else 0
             stock_name = stock_price.name if stock_price else symbol
             
-            # Determine market enum
+   
             market_enum = Market.US if detected_market == "US" else Market.NSE
             
             return StockAnalysis(
@@ -198,8 +190,7 @@ class ScreenerService:
         """
         stocks_to_scan = stock_list or NIFTY_50
         result_stocks = []
-        
-        # Analyze stocks concurrently in batches of 5
+
         batch_size = 5
         for i in range(0, len(stocks_to_scan), batch_size):
             batch = stocks_to_scan[i:i + batch_size]
@@ -213,11 +204,10 @@ class ScreenerService:
                 if analysis is None:
                     continue
                 
-                # Apply filters
+        
                 if self._passes_filters(analysis, filters):
                     result_stocks.append(analysis)
-        
-        # Sort by composite score (highest first)
+    
         result_stocks.sort(key=lambda s: s.score, reverse=True)
         
         return ScreenerResult(
@@ -254,10 +244,7 @@ class ScreenerService:
             {"id": key, "name": val["name"], "description": val["description"]}
             for key, val in PREBUILT_SCREENS.items()
         ]
-    
-    # ========================================================================
-    # Helpers
-    # ========================================================================
+
     
     async def _get_fundamentals(self, yf_symbol: str, symbol: str) -> FundamentalData:
         """Fetch fundamental data from yfinance."""
@@ -268,7 +255,6 @@ class ScreenerService:
             ticker = yf.Ticker(yf_symbol)
             info = ticker.info
             
-            # Calculate ROE: Net Income / Shareholder Equity
             net_income = info.get('netIncomeToCommon')
             equity = info.get('totalStockholderEquity')
             roe = (net_income / equity * 100) if (net_income and equity and equity != 0) else None
@@ -305,8 +291,7 @@ class ScreenerService:
         """Check if a stock analysis passes all given filters."""
         tech = analysis.technical
         fund = analysis.fundamental
-        
-        # PE ratio filters
+     
         if "pe_ratio_max" in filters:
             if fund.pe_ratio is None or fund.pe_ratio > filters["pe_ratio_max"]:
                 return False
@@ -314,32 +299,29 @@ class ScreenerService:
             if fund.pe_ratio is None or fund.pe_ratio < filters["pe_ratio_min"]:
                 return False
         
-        # PB ratio filters
         if "pb_ratio_max" in filters:
             if fund.pb_ratio is None or fund.pb_ratio > filters["pb_ratio_max"]:
                 return False
         
-        # ROE filter
         if "roe_min" in filters:
             if fund.roe is None or fund.roe < filters["roe_min"]:
                 return False
         
-        # Debt-to-Equity
         if "debt_to_equity_max" in filters:
             if fund.debt_to_equity is not None and fund.debt_to_equity > filters["debt_to_equity_max"]:
                 return False
         
-        # Dividend yield
+      
         if "dividend_yield_min" in filters:
             if fund.dividend_yield is None or fund.dividend_yield < filters["dividend_yield_min"]:
                 return False
         
-        # Profit margin
+
         if "profit_margin_min" in filters:
             if fund.profit_margin is None or fund.profit_margin < filters["profit_margin_min"]:
                 return False
         
-        # RSI filters
+
         if "rsi_max" in filters:
             if tech.rsi is None or tech.rsi > filters["rsi_max"]:
                 return False
@@ -347,17 +329,17 @@ class ScreenerService:
             if tech.rsi is None or tech.rsi < filters["rsi_min"]:
                 return False
         
-        # Above SMA-50
+    
         if filters.get("above_sma_50"):
             if tech.sma_50 is None or analysis.price <= tech.sma_50:
                 return False
         
-        # MACD bullish
+    
         if filters.get("macd_bullish"):
             if tech.macd_histogram is None or tech.macd_histogram <= 0:
                 return False
         
-        # Score filter
+        
         if "score_min" in filters:
             if analysis.score < filters["score_min"]:
                 return False
@@ -365,7 +347,7 @@ class ScreenerService:
         return True
 
 
-# Singleton
+
 _screener_service = None
 
 def get_screener_service() -> ScreenerService:

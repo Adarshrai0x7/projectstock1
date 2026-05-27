@@ -51,17 +51,13 @@ class WikipediaService:
             try:
                 page = self.wiki.page(term)
                 if page.exists():
-                    # Check if the title is actually somewhat related to the query
-                    # to prevent completely random pages if the exact match failed
+                    
                     title_lower = page.title.lower()
                     query_words = query.lower().split()
                     
-                    # Ensure at least one word from the query is in the title,
-                    # or it's a very short query
                     if any(w in title_lower for w in query_words) or len(query_words) <= 1:
                         summary = page.summary
                         if summary and len(summary) > 50:
-                            # Return the first 2-3 paragraphs (approx 800 chars)
                             truncated = summary[:800]
                             if len(summary) > 800:
                                 last_period = truncated.rfind('.')

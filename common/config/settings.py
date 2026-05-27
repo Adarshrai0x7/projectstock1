@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     llm_model_fallback: str = Field("llama-3.3-70b-versatile", env="LLM_MODEL_FALLBACK")
     gemini_api_key: Optional[str] = Field(None, env="GEMINI_API_KEY")
     gemini_model: str = Field("gemini-1.5-flash", env="GEMINI_MODEL")
+    tavily_api_key: Optional[str] = Field(None, env="TAVILY_API_KEY")
     
     # Embedding Configuration
     embedding_model: str = Field(

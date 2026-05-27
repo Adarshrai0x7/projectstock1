@@ -57,3 +57,4 @@ google-generativeai
 pandas-ta
 jugaad-trader
 wikipedia-api
+tavily-python

@@ -9,11 +9,6 @@ from datetime import datetime
 from enum import Enum
 
 
-# ============================================================================
-# ENUMS
-# ============================================================================
-
-
 
 class Market(str, Enum):
     """Supported stock markets."""
@@ -22,9 +17,6 @@ class Market(str, Enum):
     US = "US"
 
 
-# ============================================================================
-# CHAT MODELS
-# ============================================================================
 
 class ChatMessage(BaseModel):
     """A single chat message."""
@@ -51,9 +43,6 @@ class ChatResponse(BaseModel):
     session_id: Optional[str] = Field(None, description="Session ID")
 
 
-# ============================================================================
-# MARKET DATA MODELS
-# ============================================================================
 
 class StockPrice(BaseModel):
     """Stock price data."""
@@ -124,10 +113,6 @@ class StockHistory(BaseModel):
     market: Market = Market.NSE
 
 
-# ============================================================================
-# NEWS MODELS
-# ============================================================================
-
 class NewsArticle(BaseModel):
     """Financial news article."""
     title: str
@@ -136,7 +121,7 @@ class NewsArticle(BaseModel):
     url: str
     published_at: datetime
     related_symbols: Optional[List[str]] = None
-    sentiment: Optional[str] = None  # positive, negative, neutral
+    sentiment: Optional[str] = None  
 
 
 class NewsFeed(BaseModel):
@@ -145,10 +130,6 @@ class NewsFeed(BaseModel):
     query: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.now)
 
-
-# ============================================================================
-# PORTFOLIO MODELS
-# ============================================================================
 
 class PortfolioHolding(BaseModel):
     """Single portfolio holding."""
@@ -171,12 +152,6 @@ class PortfolioSummary(BaseModel):
     holdings: List[PortfolioHolding]
     last_updated: datetime = Field(default_factory=datetime.now)
 
-
-
-
-# ============================================================================
-# SCREENER MODELS
-# ============================================================================
 
 class TechnicalIndicators(BaseModel):
     """Technical analysis indicator values."""
@@ -229,8 +204,8 @@ class StockAnalysis(BaseModel):
     change_percent: float = 0.0
     technical: TechnicalIndicators = Field(default_factory=TechnicalIndicators)
     fundamental: FundamentalData = Field(default_factory=FundamentalData)
-    signal: str = "NEUTRAL"  # BUY, SELL, HOLD, NEUTRAL
-    score: float = 50.0  # 0-100 composite score
+    signal: str = "NEUTRAL" 
+    score: float = 50.0  
     market: Market = Market.NSE
 
 
@@ -243,14 +218,12 @@ class ScreenerResult(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
-# ============================================================================
-# API MODELS
-# ============================================================================
+
 
 class HealthResponse(BaseModel):
     """Health check response."""
     status: str = "healthy"
-    version: str = "2.0.0"
+    version: str = "3.0.0"
     timestamp: datetime = Field(default_factory=datetime.now)
 
 

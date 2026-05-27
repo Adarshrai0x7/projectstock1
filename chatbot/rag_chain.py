@@ -43,3 +43,33 @@ def get_wikipedia_summary(company_name: str) -> str:
             return json.loads(r.read()).get("extract", "")[:500]
     except Exception:
         return ""
+
+def get_tavily_search(query: str, max_results: int = 2) -> str:
+    """Search the web using Tavily for real-time and robust web context."""
+    from common.config.settings import settings
+    if not settings.tavily_api_key:
+        logger.warning("Tavily API key not found. Skipping web search.")
+        return ""
+    
+    try:
+        from langchain_community.tools.tavily_search import TavilySearchResults
+        
+        import os
+        os.environ["TAVILY_API_KEY"] = settings.tavily_api_key
+        
+        tool = TavilySearchResults(max_results=max_results)
+        results = tool.invoke({"query": query})
+        
+        
+        if isinstance(results, list) and len(results) > 0:
+            formatted_results = []
+            for idx, res in enumerate(results):
+                content = res.get('content', '')
+                url = res.get('url', '')
+                if content:
+                    formatted_results.append(f"Source [{idx+1}] ({url}):\n{content}")
+            return "\n\n".join(formatted_results)
+        return ""
+    except Exception as e:
+        logger.error(f"Tavily search failed: {e}")
+        return ""
