@@ -1,8 +1,8 @@
-# 📊 FinSight — AI-Powered Financial Assistant
+# 📊 FBOT — AI-Powered Financial Assistant
 
 An intelligent financial assistant that combines **real-time market data, technical analysis, fundamental analysis, news intelligence, stock screening, and Retrieval-Augmented Generation (RAG)** into a single conversational interface.
 
-Built using **LangGraph, FastAPI, Streamlit, Groq LLMs, FAISS, and financial data services**, FinSight enables users to analyze Indian stocks, explore market trends, screen opportunities, and learn trading concepts through natural language conversations.
+Built using **LangGraph, FastAPI, Streamlit, Groq LLMs, FAISS, and financial data services**, FBot enables users to analyze Indian stocks, explore market trends, screen opportunities, and learn trading concepts through natural language conversations.
 
 ## 🚀 Highlights
 
@@ -76,7 +76,7 @@ LangGraph ReAct Agent
 * Wikipedia API
 * Tavily Search
 
-## Key Features
+## ✨ Key Features
 
 | Feature              | Capability                                 |
 | -------------------- | ------------------------------------------ |
@@ -90,7 +90,7 @@ LangGraph ReAct Agent
 | Trading Education    | Financial concepts and strategies          |
 | Streaming            | SSE & WebSocket support                    |
 
-## Deployment
+## 🚀 Deployment
 
 ```bash
 # Backend
@@ -100,7 +100,7 @@ uvicorn main:app --reload
 streamlit run streamlit_app.py
 ```
 
-## Future Enhancements
+## 🔮 Future Enhancements
 
 * Portfolio Analytics
 * Watchlists & Alerts
@@ -110,4 +110,4 @@ streamlit run streamlit_app.py
 
 ---
 
-Built with  using LangGraph, FastAPI, Streamlit, and LLMs.
+Built using LangGraph, FastAPI, Streamlit, and LLMs.
