@@ -1,5 +1,5 @@
 """
-LangGraph Agent for the FinSight chatbot.
+LangGraph Agent for the FBOT chatbot.
 
 Architecture:
     User Message → StateGraph agent node → LLM picks tool(s) → ToolNode
@@ -11,7 +11,7 @@ Tools wrap existing data services (yfinance, Screener.in, news RSS, knowledge ba
 1.  [ARCHITECTURE] Replaced create_react_agent with a full StateGraph using typed
     AgentState (TypedDict with Annotated message list, intent, tools_used, session_id).
 2.  [MEMORY] Replaced MemorySaver with AsyncSqliteSaver from
-    langgraph.checkpoint.sqlite.aio using connection string "finsight.db".
+    langgraph.checkpoint.sqlite.aio using connection string "fbot.db".
     Added get_graph() async factory that lazily initialises and caches the graph.
 3.  [STREAMING] Added stream_message() async generator using astream_events v2.
     Yields token chunks on on_chat_model_stream and tool-start banners.
@@ -659,9 +659,9 @@ def _build_main_graph(llm: ChatGroq, checkpointer):
 
 
 
-class FinSightAgent:
+class FBotAgent:
     """
-    LangGraph-powered FinSight agent.
+    LangGraph-powered FBOT agent.
     Uses a custom StateGraph with an agent node, tool node, and fallback node.
     Must call ``await initialize()`` before first use to set up the async
     SQLite checkpointer.
@@ -684,11 +684,11 @@ class FinSightAgent:
         AsyncSqliteSaver). Call once at application startup."""
         if self.graph is not None:
             return
-        self._saver_cm = AsyncSqliteSaver.from_conn_string("finsight.db")
+        self._saver_cm = AsyncSqliteSaver.from_conn_string("fbot.db")
         saver = await self._saver_cm.__aenter__()
         self.graph = _build_main_graph(self.llm, saver)
         logger.info(
-            f"✅ FinSight LangGraph agent ready — {len(ALL_TOOLS)} tools loaded"
+            f"✅ FBOT LangGraph agent ready — {len(ALL_TOOLS)} tools loaded"
         )
 
     async def shutdown(self):
@@ -833,16 +833,16 @@ class FinSightAgent:
 
 
 
-_agent: Optional[FinSightAgent] = None
+_agent: Optional[FBotAgent] = None
 
 
-def get_agent() -> FinSightAgent:
-    """Get or create the FinSight agent singleton.
+def get_agent() -> FBotAgent:
+    """Get or create the FBOT agent singleton.
     NOTE: You must call ``await get_agent().initialize()`` once at startup
     before invoking process_message / stream_message."""
     global _agent
     if _agent is None:
-        _agent = FinSightAgent()
+        _agent = FBotAgent()
     return _agent
 
 

@@ -322,7 +322,7 @@ India moved to T+1 settlement for all NSE/BSE stocks in 2023, making it one of t
 **SEBI registration check:**
 Always verify your broker/advisor is SEBI registered at sebi.gov.in/sebiweb/home/HomeAction.do
 
-**Disclaimer:** FinSight is an informational tool. Always verify with SEBI-registered advisors.""",
+**Disclaimer:** FBOT is an informational tool. Always verify with SEBI-registered advisors.""",
         "keywords": ["SEBI", "investor protection", "broker default", "SCORES", "KYC", "regulation"]
     },
 

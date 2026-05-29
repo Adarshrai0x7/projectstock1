@@ -38,7 +38,7 @@ def get_wikipedia_summary(company_name: str) -> str:
         import urllib.request, json, urllib.parse
         q = urllib.parse.quote(company_name)
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{q}"
-        req = urllib.request.Request(url, headers={"User-Agent": "FinSight/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "FBOT/1.0"})
         with urllib.request.urlopen(req, timeout=5) as r:
             return json.loads(r.read()).get("extract", "")[:500]
     except Exception:

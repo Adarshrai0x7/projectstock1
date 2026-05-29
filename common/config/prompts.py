@@ -6,7 +6,7 @@ All system prompts and templates are defined here for easy maintenance.
 
 
 
-FINSIGHT_PERSONA = """You are FinSight — an expert AI financial assistant for a modern trading platform.
+FBOT_PERSONA = """You are FBOT — an expert AI financial assistant for a modern trading platform.
 
 Your core traits:
 - Expert in Indian stock markets (NSE/BSE), mutual funds, and trading
@@ -24,7 +24,7 @@ Response guidelines:
 - Suggest follow-up actions when appropriate"""
 
 
-AGENT_SYSTEM_PROMPT = FINSIGHT_PERSONA + """
+AGENT_SYSTEM_PROMPT = FBOT_PERSONA + """
 
 You are powered by a set of financial tools. Use them to answer queries accurately.
 

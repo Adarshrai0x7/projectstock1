@@ -1,5 +1,5 @@
 """
-Symbol resolution utilities for the FinSight chatbot.
+Symbol resolution utilities for the FBOT chatbot.
 
 Uses Screener.in's autocomplete API as the primary resolution strategy
 for Indian stocks. This is 100% reliable for Indian stocks with zero

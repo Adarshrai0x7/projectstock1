@@ -1,6 +1,6 @@
 """
-FinSight Chatbot — Streamlit Frontend
-Premium dark-themed chat interface for the FinSight financial assistant.
+FBOT Chatbot — Streamlit Frontend
+Premium dark-themed chat interface for the FBOT financial assistant.
 Connects to the FastAPI backend at http://localhost:8000.
 """
 
@@ -17,7 +17,7 @@ import os
 # ============================================================================
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
-APP_TITLE = "FinSight"
+APP_TITLE = "FBOT"
 APP_SUBTITLE = "AI-Powered Financial Assistant"
 
 # Intent → emoji + color mapping
@@ -42,7 +42,7 @@ INTENT_BADGES = {
 # ============================================================================
 
 st.set_page_config(
-    page_title="FinSight — Financial Assistant",
+    page_title="FBOT — Financial Assistant",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -308,7 +308,7 @@ with st.sidebar:
     # Brand
     st.markdown("""
     <div class="sidebar-brand">
-        <h2>📊 FinSight</h2>
+        <h2>📊 FBOT</h2>
         <p>Intelligent Trading Companion</p>
     </div>
     """, unsafe_allow_html=True)
@@ -410,7 +410,7 @@ with st.sidebar:
 if not st.session_state.messages:
     st.markdown("""
     <div class="hero-header">
-        <h1>FinSight</h1>
+        <h1>FBOT</h1>
         <p>Your AI-Powered Financial Assistant — Ask me anything about stocks, markets & trading</p>
     </div>
     """, unsafe_allow_html=True)

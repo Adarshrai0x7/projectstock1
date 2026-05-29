@@ -24,7 +24,7 @@ class WikipediaService:
         if wikipediaapi:
             # Requires a meaningful user agent
             self.wiki = wikipediaapi.Wikipedia(
-                user_agent='FinSightBot/1.0 (https://github.com/FinSight)',
+                user_agent='FBOTBot/1.0 (https://github.com/FBOT)',
                 language='en',
                 extract_format=wikipediaapi.ExtractFormat.WIKI
             )

@@ -1,5 +1,5 @@
 """
-FastAPI application for the FinSight Chatbot.
+FastAPI application for the FBOT Chatbot.
 Powered by a LangGraph ReAct agent with tool-calling.
 Includes REST and WebSocket endpoints, health checks, and CORS support.
 """
@@ -44,25 +44,25 @@ async def lifespan(app: FastAPI):
             traces_sample_rate=0.1,
         )
         logger.info("🛡️ Sentry error monitoring enabled")
-    logger.info("🚀 Starting FinSight Chatbot API...")
+    logger.info("🚀 Starting FBOT Chatbot API...")
     logger.info(f"📊 Default market: {settings.default_market}")
     logger.info(f"🤖 LLM Model: {settings.llm_model}")
     
     # Initialize LangGraph agent with async SQLite checkpointer
     agent = get_agent()
     await agent.initialize()
-    logger.info("✅ FinSight LangGraph agent initialized")
+    logger.info("✅ FBOT LangGraph agent initialized")
     
     yield
     
     # Shutdown — close the SQLite checkpointer connection
     await agent.shutdown()
-    logger.info("👋 Shutting down FinSight Chatbot API...")
+    logger.info("👋 Shutting down FBOT Chatbot API...")
 
 
 
 app = FastAPI(
-    title="FinSight Chatbot API",
+    title="FBOT Chatbot API",
     description="AI-powered financial assistant using LangGraph agent architecture",
     version="3.0.0",
     lifespan=lifespan

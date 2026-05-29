@@ -1,5 +1,5 @@
 """
-Centralized symbol registry for the FinSight platform.
+Centralized symbol registry for the FBOT platform.
 
 All stock name mappings, index symbol mappings, and edge-case aliases
 live here as the SINGLE SOURCE OF TRUTH. Every other module should
