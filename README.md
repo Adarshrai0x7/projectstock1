@@ -110,4 +110,4 @@ streamlit run streamlit_app.py
 
 ---
 
-Built with ❤️ using LangGraph, FastAPI, Streamlit, and LLMs.
+Built with  using LangGraph, FastAPI, Streamlit, and LLMs.
