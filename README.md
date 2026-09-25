@@ -8,7 +8,7 @@
     <img src="https://img.shields.io/badge/LangGraph-Agent-blueviolet?logo=langchain" alt="LangGraph">
     <img src="https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi" alt="FastAPI">
     <img src="https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?logo=streamlit" alt="Streamlit">
-    <img src="https://img.shields.io/badge/Groq-LLaMA_3.1-orange?logo=meta" alt="Groq">
+    <img src="https://img.shields.io/badge/Model-GPT--OSS--20B-orange" alt="Model">
     <img src="https://img.shields.io/badge/Version-3.0.0-green" alt="Version">
   </p>
 </p>
@@ -67,7 +67,7 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 |---|---|
 | [LangGraph](https://github.com/langchain-ai/langgraph) | StateGraph-based ReAct agent orchestration with conditional edges, fan-out sub-graphs, and tool nodes |
 | [LangChain](https://github.com/langchain-ai/langchain) | Tool abstractions, structured output, prompt management |
-| [Groq API](https://groq.com/) | Ultra-fast LLM inference (LLaMA 3.1 8B Instant) |
+| [LLM Integration](https://github.com/langchain-ai/langchain) | Ultra-fast LLM inference (`openai/gpt-oss-20b`) |
 
 
 ### Backend
@@ -165,7 +165,7 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 │                 └──────────┘ └───────┘ └────────┘ └─────┘     │
 │                                                                 │
 │  Memory: AsyncSqliteSaver (FBOT.db)                        │
-│  Model:  Groq LLaMA 3.1 8B Instant                            │
+│  Model:  openai/gpt-oss-20b                                   │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
@@ -288,7 +288,7 @@ graph TD
 1. **User sends message** via Streamlit → SSE stream to FastAPI `/stream` endpoint
 2. **FastAPI** creates/retrieves session, passes to `FBOTAgent.stream_message()`
 3. **LangGraph StateGraph** processes through nodes:
-   - `START` → **Agent Node**: LLM (Groq LLaMA 3.3 70B) reads system prompt + message history + bound tools
+   - `START` → **Agent Node**: LLM (`openai/gpt-oss-20b`) reads system prompt + message history + bound tools
    - **Route Decision** (conditional edge):
      - If LLM emits `tool_calls` → route to **Tool Node**
      - If Groq format error → route to **Fallback Node** (safe error message)
@@ -377,7 +377,7 @@ All tools use `InjectedToolCallId` for error tracing and `ToolException` for gra
 | **Google News RSS** | Latest financial headlines (India-focused) | ❌ Free |
 | **Wikipedia API** | Financial concept explanations, company background | ❌ Free |
 | **Tavily Search** | Real-time web search results | ✅ API Key |
-| **Groq API** | LLM inference (LLaMA 3.1 8B) | ✅ API Key |
+| **LLM Provider** | LLM inference (`openai/gpt-oss-20b`) | ✅ API Key |
 
 ---
 
@@ -427,7 +427,7 @@ GROQ_API_KEY=gsk_your_groq_api_key_here
 TAVILY_API_KEY=tvly-your_tavily_key_here
 
 # Optional — LLM configuration
-LLM_MODEL=llama-3.1-8b-instant
+LLM_MODEL=openai/gpt-oss-20b
 LLM_TEMPERATURE=0.3
 LLM_MAX_TOKENS=2048
 
