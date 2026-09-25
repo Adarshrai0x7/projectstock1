@@ -79,7 +79,7 @@ class MarketDataService:
     
     def _detect_market(self, symbol: str) -> tuple:
         """
-        Smart market detection: tries NSE first, then US.
+        Smart market detection: tries NSE first, then BSE, then US.
         Returns (yf_symbol, detected_market) tuple.
         """
         if yf is None:
@@ -99,6 +99,17 @@ class MarketDataService:
             price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
             if price and price > 0:
                 return nse_symbol, "NSE"
+        except Exception:
+            pass
+        
+        # Try BSE market (.BO suffix)
+        bse_symbol = symbol_upper if symbol_upper.endswith(BSE_SUFFIX) else f"{symbol_upper}{BSE_SUFFIX}"
+        try:
+            ticker = yf.Ticker(bse_symbol)
+            info = ticker.info
+            price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
+            if price and price > 0:
+                return bse_symbol, "BSE"
         except Exception:
             pass
         
@@ -325,15 +336,18 @@ class MarketDataService:
             return None
     
     async def get_market_summary(self) -> Dict[str, Any]:
-        """Get overall market summary with key indices."""
+        """Get overall market summary with key indices concurrently."""
         indices = ["NIFTY 50", "SENSEX", "BANK NIFTY"]
         results = {}
         
-        for index in indices:
-            data = await self.get_index_data(index)
-            if data:
-                results[index] = data
+        # Fetch all indices in parallel
+        tasks = [self.get_index_data(index) for index in indices]
+        fetched_data = await asyncio.gather(*tasks, return_exceptions=True)
         
+        for index, data in zip(indices, fetched_data):
+            if data and not isinstance(data, Exception):
+                results[index] = data
+                
         return results
     
     async def get_stock_history(
@@ -423,100 +437,8 @@ class MarketDataService:
             
         except Exception as e:
             logger.error(f"Error fetching history for {symbol}: {e}")
-            return self._simulate_stock_history(symbol, days)
+            return None
    
-    
-    def _simulate_stock_price(self, symbol: str) -> StockPrice:
-        """Generate simulated stock price for demo purposes."""
-        import random
-        base_price = random.uniform(100, 5000)
-        change = random.uniform(-50, 50)
-        
-        return StockPrice(
-            symbol=symbol.upper(),
-            name=STOCK_NAME_MAP.get(symbol.upper(), f"{symbol} Ltd"),
-            price=round(base_price, 2),
-            change=round(change, 2),
-            change_percent=round(change / base_price * 100, 2),
-            volume=random.randint(100000, 10000000),
-            high=round(base_price * 1.02, 2),
-            low=round(base_price * 0.98, 2),
-            market=Market.NSE
-        )
-    
-    def _simulate_index_data(self, index: str) -> IndexData:
-        """Generate simulated index data for demo purposes."""
-        import random
-        base_values = {
-            "NIFTY 50": 22500,
-            "SENSEX": 74000,
-            "BANK NIFTY": 48000,
-        }
-        base = base_values.get(index.upper(), 20000)
-        change = random.uniform(-200, 200)
-        
-        return IndexData(
-            symbol=INDEX_SYMBOLS.get(index.upper(), index),
-            name=index.upper(),
-            value=round(base + random.uniform(-100, 100), 2),
-            change=round(change, 2),
-            change_percent=round(change / base * 100, 2)
-        )
-    
-    def _simulate_stock_details(self, symbol: str) -> StockDetails:
-        """Generate simulated stock details for demo purposes."""
-        import random
-        return StockDetails(
-            symbol=symbol.upper(),
-            name=STOCK_NAME_MAP.get(symbol.upper(), f"{symbol} Ltd"),
-            sector="Technology",
-            industry="IT Services",
-            market_cap=random.randint(10000, 1000000) * 10000000,
-            pe_ratio=round(random.uniform(10, 50), 2),
-            eps=round(random.uniform(10, 200), 2),
-            week_52_high=round(random.uniform(1000, 5000), 2),
-            week_52_low=round(random.uniform(500, 2000), 2),
-        )
-    
-    def _simulate_stock_history(self, symbol: str, days: int = 5) -> StockHistory:
-        """Generate simulated stock history for demo purposes."""
-        import random
-        from datetime import date
-        
-        base_price = random.uniform(100, 5000)
-        history_days = []
-        
-        for i in range(days):
-            day_date = date.today() - timedelta(days=days - i)
-            change = random.uniform(-3, 3)
-            close = round(base_price * (1 + change / 100), 2)
-            
-            history_days.append(StockHistoryDay(
-                date=day_date.strftime('%Y-%m-%d'),
-                open=round(close * random.uniform(0.99, 1.01), 2),
-                high=round(close * random.uniform(1.0, 1.03), 2),
-                low=round(close * random.uniform(0.97, 1.0), 2),
-                close=close,
-                volume=random.randint(100000, 10000000),
-                change_percent=round(change, 2) if i > 0 else None
-            ))
-            base_price = close
-        
-        overall = None
-        if len(history_days) >= 2:
-            first = history_days[0].close
-            last = history_days[-1].close
-            overall = round((last - first) / first * 100, 2)
-        
-        return StockHistory(
-            symbol=symbol.upper(),
-            name=STOCK_NAME_MAP.get(symbol.upper(), f"{symbol} Ltd"),
-            days=history_days,
-            period=f"{days}d",
-            overall_change_percent=overall,
-            market=Market.NSE
-        )
-
 
 _market_service = None
 

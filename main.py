@@ -223,13 +223,17 @@ async def websocket_chat(websocket: WebSocket):
     await websocket.accept()
     session_id = None
     agent = get_agent()
-    
+    last_msg_time = 0
+    MIN_INTERVAL = 2.0  # Allow 1 message every 2 seconds
     try:
         while True:
             data = await websocket.receive_json()
             message = data.get("message", "").strip()
+            now = asyncio.get_event_loop().time()
             session_id = data.get("session_id", session_id)
-            
+            if now - last_msg_time < MIN_INTERVAL:
+                await websocket.send_json({"error": "Rate limit exceeded. Please wait 2 seconds between messages."})
+                continue
             if not message:
                 await websocket.send_json({"error": "Empty message"})
                 continue

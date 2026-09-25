@@ -68,7 +68,7 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 | [LangGraph](https://github.com/langchain-ai/langgraph) | StateGraph-based ReAct agent orchestration with conditional edges, fan-out sub-graphs, and tool nodes |
 | [LangChain](https://github.com/langchain-ai/langchain) | Tool abstractions, structured output, prompt management |
 | [Groq API](https://groq.com/) | Ultra-fast LLM inference (LLaMA 3.3 70B Versatile) |
-| [Google Gemini](https://ai.google.dev/) | LLM fallback provider |
+
 
 ### Backend
 
@@ -118,15 +118,7 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 | Technology | Purpose |
 |---|---|
 | [SQLite](https://www.sqlite.org/) (via `aiosqlite`) | Async persistent conversation memory (LangGraph checkpointer) |
-| [cachetools](https://github.com/tkem/cachetools) | In-memory TTL caching for market data, news, and fundamentals |
-| [rapidfuzz](https://github.com/maxbachmann/RapidFuzz) | Fuzzy string matching for company name typo recovery |
-
-### Testing
-
-| Technology | Purpose |
-|---|---|
-| [pytest](https://pytest.org/) + [pytest-asyncio](https://github.com/pytest-dev/pytest-asyncio) | Async test suite |
-| [httpx](https://www.python-httpx.org/) | Async HTTP client for integration tests |
+| [rapidfuzz](https://github.com/maxbachmann/RapidFuzz) | Fuzzy string matching for typo-tolerant company name resolution (Tier 1.5) |
 
 ### Deployment
 
@@ -241,7 +233,7 @@ FBOT/
 │   │
 │   └── modules/                     # Feature modules
 │       ├── market_formatter.py      # Formatting for stock prices, indices, history
-│       └── trading_assistant.py     # Built-in trading knowledge base (40+ topics)
+│       └── trading_assistant.py     # Built-in trading knowledge base (18 topics)
 │
 ├── common/                          # 📦 Shared utilities & configuration
 │   ├── __init__.py
@@ -324,17 +316,24 @@ Three data-fetching nodes run **concurrently** via `Send()`, then fan-in to a sy
 ### Symbol Resolution Strategy
 
 ```
-User Input ("Tata Motors")
+User Input ("reliace")
         │
         ▼
-1. Edge-Case Alias Lookup  → instant (handles "jio", "hul", etc.)
+1. Edge-Case Alias Lookup  → instant, O(1) dict (80+ aliases for NIFTY 50)
+        │ (miss — no exact key "reliace")
+        ▼
+2. Fuzzy Alias Match       → rapidfuzz, <0.1ms, score cutoff 75
+        │ ("reliace" → "reliance", score=93) ✅
+        ▼
+   Resolved: "RELIANCE.NS"
+
+   If fuzzy also misses:
+        ▼
+3. Screener.in API Search  → async aiohttp, returns exact NSE ticker
         │ (miss)
         ▼
-2. Screener.in API Search  → reliable, returns exact NSE ticker
-        │ (miss)
-        ▼
-3. Predict Fallback        → clean name → append ".NS"
-        │
+4. Predict Fallback        → clean name → append ".NS" → validate via yfinance
+        │                     (returns None if ticker doesn't exist)
         ▼
    Resolved: "TATAMOTORS.NS"
 ```
@@ -368,7 +367,7 @@ All tools use `InjectedToolCallId` for error tracing and `ToolException` for gra
 | `POST` | `/chat` | Main chat (REST) | ✅ |
 | `POST` | `/v2/chat` | V2 chat with full request model | ✅ |
 | `POST` | `/stream` | Streaming chat (SSE) | ✅ |
-| `WS` | `/ws/chat` | WebSocket real-time chat | ❌ |
+| `WS` | `/ws/chat` | WebSocket real-time chat | ✅ (in-handler) |
 | `GET` | `/market/{symbol}` | Direct stock price lookup | ✅ |
 | `GET` | `/index/{index_name}` | Direct index data lookup | ✅ |
 | `GET` | `/news` | Financial news (optional `?symbol=`) | ✅ |
@@ -456,8 +455,7 @@ ENABLE_NEWS=true
 # Optional — monitoring
 SENTRY_DSN=your_sentry_dsn_here
 
-# Optional — Gemini fallback
-GEMINI_API_KEY=your_gemini_key_here
+
 ```
 
 ---

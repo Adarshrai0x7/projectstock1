@@ -140,15 +140,17 @@ class ScreenerService:
             )
             
       
-            current_price = tech_data.get("current_price", 0)
-            if current_price == 0:
+            current_price = tech_data.get("current_price")
+            if not current_price:
                 stock_price = await self.market_service.get_stock_price(symbol)
-                if stock_price:
+                if stock_price and stock_price.price:
                     current_price = stock_price.price
+                else:
+                    current_price = 0.0
   
             stock_price = await self.market_service.get_stock_price(symbol)
-            change_pct = stock_price.change_percent if stock_price else 0
-            stock_name = stock_price.name if stock_price else symbol
+            change_pct = stock_price.change_percent if stock_price and stock_price.change_percent else 0.0
+            stock_name = stock_price.name if stock_price and stock_price.name else symbol
             
    
             market_enum = Market.US if detected_market == "US" else Market.NSE

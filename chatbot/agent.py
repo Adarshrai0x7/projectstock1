@@ -56,9 +56,6 @@ logger = logging.getLogger(__name__)
 class AgentState(TypedDict):
     """Typed state for the main agent graph."""
     messages: Annotated[list, add_messages]
-    intent: str
-    tools_used: list[str]
-    session_id: str
 
 
 class AnalysisSubState(TypedDict):
@@ -142,7 +139,7 @@ async def get_stock_price(
     from common.data_services.market_data import get_market_data_service
     from chatbot.modules.market_formatter import MarketFormatter
 
-    resolved = resolve_symbol(company_name) or company_name.upper()
+    resolved = (await resolve_symbol(company_name)) or company_name.upper()
     service = get_market_data_service()
     price = await service.get_stock_price(resolved)
 
@@ -224,7 +221,7 @@ async def get_stock_details(
     from chatbot.modules.market_formatter import MarketFormatter
     from chatbot.rag_chain import get_wikipedia_summary
 
-    resolved = resolve_symbol(company_name) or company_name.upper()
+    resolved = (await resolve_symbol(company_name)) or company_name.upper()
     service = get_market_data_service()
     screener = get_screener_in_service()
 
@@ -242,7 +239,7 @@ async def get_stock_details(
 
     if details:
         parts.append(MarketFormatter.format_stock_details(details, price))
-        wiki = get_wikipedia_summary((details.name or resolved) + " company India")
+        wiki = await get_wikipedia_summary((details.name or resolved) + " company India")
         if wiki:
             parts.append(f"\n📖 **Wikipedia:** {wiki}")
 
@@ -273,7 +270,7 @@ async def get_stock_history(
     from common.data_services.market_data import get_market_data_service
     from chatbot.modules.market_formatter import MarketFormatter
 
-    resolved = resolve_symbol(company_name) or company_name.upper()
+    resolved = (await resolve_symbol(company_name)) or company_name.upper()
     days = min(max(days, 1), 90)
 
     service = get_market_data_service()
@@ -301,14 +298,14 @@ async def get_stock_news(
     if query.lower() in ("market", "general", "latest", "all", "news"):
         articles = await service.get_market_news(limit=5)
     else:
-        resolved = resolve_symbol(query) or query.upper()
+        resolved = (await resolve_symbol(query)) or query.upper()
         articles = await service.get_stock_news(resolved, limit=5)
 
     return service.format_news(articles)
 
 
 @tool
-def search_knowledge_base(
+async def search_knowledge_base(
     query: str,
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> str:
@@ -322,38 +319,50 @@ def search_knowledge_base(
     from common.data_services.wikipedia_service import get_wikipedia_service
 
     parts = []
-
-
     assistant = get_trading_assistant()
-    topic = assistant.search(query)
+    retriever = get_rag_retriever()
+    wiki_service = get_wikipedia_service()
+    
+    # 1. Trading Assistant search (fast sync)
+    topic = await asyncio.to_thread(assistant.search, query)
     if topic:
         parts.append(assistant.format_response(topic))
 
-    retriever = get_rag_retriever()
-    if retriever:
-        try:
-            docs = retriever.invoke(query)
-            if docs:
-                rag_text = "\n".join(d.page_content for d in docs[:2])
-                parts.append(f"📚 **Local Knowledge:**\n{rag_text}")
-        except Exception:
-            pass
-            
-   
-    tavily_context = get_tavily_search(query)
+    # We can run FAISS, Tavily, and Wikipedia in parallel
+    async def _fetch_rag():
+        if retriever:
+            try:
+                docs = await asyncio.to_thread(retriever.invoke, query)
+                if docs:
+                    return "\n".join(d.page_content for d in docs[:2])
+            except Exception:
+                pass
+        return None
+
+    async def _fetch_tavily():
+        return await asyncio.to_thread(get_tavily_search, query)
+
+    async def _fetch_wiki():
+        search_query = query.lower()
+        for prefix in ("what is", "tell me about", "explain", "define"):
+            search_query = search_query.replace(prefix, "").strip()
+        search_query = search_query.rstrip("?")
+        if search_query:
+            summary = await asyncio.to_thread(wiki_service.search_concept, search_query)
+            if summary:
+                return wiki_service.format_for_llm(search_query, summary)
+        return None
+
+    rag_text, tavily_context, wiki_summary = await asyncio.gather(
+        _fetch_rag(), _fetch_tavily(), _fetch_wiki()
+    )
+
+    if rag_text:
+        parts.append(f"📚 **Local Knowledge:**\n{rag_text}")
     if tavily_context:
         parts.append(f"🌐 **Web Context:**\n{tavily_context}")
-
-   
-    wiki_service = get_wikipedia_service()
-    search_query = query.lower()
-    for prefix in ("what is", "tell me about", "explain", "define"):
-        search_query = search_query.replace(prefix, "").strip()
-    search_query = search_query.rstrip("?")
-
-    wiki_summary = wiki_service.search_concept(search_query) if search_query else None
     if wiki_summary:
-        parts.append(wiki_service.format_for_llm(search_query, wiki_summary))
+        parts.append(wiki_summary)
 
     if parts:
         return "\n\n".join(parts)
@@ -540,7 +549,7 @@ async def analyze_stock(
     Returns composite score, signal (BUY/SELL/HOLD), RSI, MACD, PE ratio, etc.
     Use this when the user asks to 'analyze X', 'full analysis of X', 'should I look at X'.
     """
-    resolved = resolve_symbol(company_name) or company_name.upper()
+    resolved = (await resolve_symbol(company_name)) or company_name.upper()
     subgraph = _get_analysis_subgraph()
     result = await subgraph.ainvoke({
         "symbol": resolved,

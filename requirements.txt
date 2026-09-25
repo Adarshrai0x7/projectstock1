@@ -34,12 +34,10 @@ yfinance
 feedparser
 aiohttp
 
-# Caching & Utilities
-cachetools
+# Utilities
 numpy
-
-# Fuzzy matching (company name typo recovery in entity extractor)
 rapidfuzz>=3.0
+
 
 # Testing
 pytest
