@@ -8,7 +8,7 @@
     <img src="https://img.shields.io/badge/LangGraph-Agent-blueviolet?logo=langchain" alt="LangGraph">
     <img src="https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi" alt="FastAPI">
     <img src="https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?logo=streamlit" alt="Streamlit">
-    <img src="https://img.shields.io/badge/Groq-LLaMA_3.3-orange?logo=meta" alt="Groq">
+    <img src="https://img.shields.io/badge/Groq-LLaMA_3.1-orange?logo=meta" alt="Groq">
     <img src="https://img.shields.io/badge/Version-3.0.0-green" alt="Version">
   </p>
 </p>
@@ -67,7 +67,7 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 |---|---|
 | [LangGraph](https://github.com/langchain-ai/langgraph) | StateGraph-based ReAct agent orchestration with conditional edges, fan-out sub-graphs, and tool nodes |
 | [LangChain](https://github.com/langchain-ai/langchain) | Tool abstractions, structured output, prompt management |
-| [Groq API](https://groq.com/) | Ultra-fast LLM inference (LLaMA 3.3 70B Versatile) |
+| [Groq API](https://groq.com/) | Ultra-fast LLM inference (LLaMA 3.1 8B Instant) |
 
 
 ### Backend
@@ -78,8 +78,6 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 | [Uvicorn](https://www.uvicorn.org/) | ASGI server |
 | [Pydantic](https://docs.pydantic.dev/) | Data validation, settings management, request/response schemas |
 | [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | Environment variable configuration management |
-| [SlowAPI](https://github.com/laurentS/slowapi) | Dynamic, config-driven rate limiting |
-| [Sentry SDK](https://sentry.io/) | Error monitoring and performance tracing |
 
 ### Frontend
 
@@ -118,7 +116,6 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 | Technology | Purpose |
 |---|---|
 | [SQLite](https://www.sqlite.org/) (via `aiosqlite`) | Async persistent conversation memory (LangGraph checkpointer) |
-| [rapidfuzz](https://github.com/maxbachmann/RapidFuzz) | Fuzzy string matching for typo-tolerant company name resolution (Tier 1.5) |
 
 ### Deployment
 
@@ -148,7 +145,7 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 │  │ /chat    │  │ /stream  │  │ /ws/chat  │  │ /market/*    │  │
 │  │ (REST)   │  │ (SSE)    │  │(WebSocket)│  │ /news, etc.  │  │
 │  └──────────┘  └──────────┘  └───────────┘  └──────────────┘  │
-│         Rate Limiting (SlowAPI)  │  CORS  │  Sentry           │
+│                CORS               │                   │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
@@ -168,7 +165,7 @@ It uses a **LangGraph ReAct agent** architecture where an LLM autonomously selec
 │                 └──────────┘ └───────┘ └────────┘ └─────┘     │
 │                                                                 │
 │  Memory: AsyncSqliteSaver (FBOT.db)                        │
-│  Model:  Groq LLaMA 3.3 70B Versatile                         │
+│  Model:  Groq LLaMA 3.1 8B Instant                            │
 └────────────────────────┬────────────────────────────────────────┘
                          │
                          ▼
@@ -322,17 +319,10 @@ User Input ("reliace")
 1. Edge-Case Alias Lookup  → instant, O(1) dict (80+ aliases for NIFTY 50)
         │ (miss — no exact key "reliace")
         ▼
-2. Fuzzy Alias Match       → rapidfuzz, <0.1ms, score cutoff 75
-        │ ("reliace" → "reliance", score=93) ✅
-        ▼
-   Resolved: "RELIANCE.NS"
-
-   If fuzzy also misses:
-        ▼
-3. Screener.in API Search  → async aiohttp, returns exact NSE ticker
+2. Screener.in API Search  → async aiohttp, returns exact NSE ticker
         │ (miss)
         ▼
-4. Predict Fallback        → clean name → append ".NS" → validate via yfinance
+3. Predict Fallback        → clean name → append ".NS" → validate via yfinance
         │                     (returns None if ticker doesn't exist)
         ▼
    Resolved: "TATAMOTORS.NS"
@@ -387,7 +377,7 @@ All tools use `InjectedToolCallId` for error tracing and `ToolException` for gra
 | **Google News RSS** | Latest financial headlines (India-focused) | ❌ Free |
 | **Wikipedia API** | Financial concept explanations, company background | ❌ Free |
 | **Tavily Search** | Real-time web search results | ✅ API Key |
-| **Groq API** | LLM inference (LLaMA 3.3 70B) | ✅ API Key |
+| **Groq API** | LLM inference (LLaMA 3.1 8B) | ✅ API Key |
 
 ---
 
@@ -437,7 +427,7 @@ GROQ_API_KEY=gsk_your_groq_api_key_here
 TAVILY_API_KEY=tvly-your_tavily_key_here
 
 # Optional — LLM configuration
-LLM_MODEL=llama-3.3-70b-versatile
+LLM_MODEL=llama-3.1-8b-instant
 LLM_TEMPERATURE=0.3
 LLM_MAX_TOKENS=2048
 

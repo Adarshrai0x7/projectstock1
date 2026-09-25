@@ -36,7 +36,6 @@ aiohttp
 
 # Utilities
 numpy
-rapidfuzz>=3.0
 
 
 # Testing
@@ -45,8 +44,6 @@ pytest-asyncio
 httpx
 
 # Rate Limiting & Monitoring
-slowapi
-sentry-sdk[fastapi]
 
 # LLM Fallback
 google-generativeai
